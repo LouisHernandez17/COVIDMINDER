@@ -1,4 +1,4 @@
-# COVIDMINDER Daily data downloader (1 of 4)
+# COVIDMINDER Daily data downloader (1 of 5)
 # SOURCE: COVID Tracking Project (api): https://covidtracking.com/api/states.csv
 # FILES UPDATED BY THIS SCRIPT:
 # "data/csv/states_testing_raw.csv"
@@ -16,8 +16,8 @@ todays_raw_data <- read_csv(paste0("data/csv/", "states_testing_raw.csv"))
 # Transform to match our structure
 state_covid_testing <- todays_raw_data %>%
 #  filter(Country_Region == "US") %>%
-  filter(!state %in% c("AS") ) %>%
-  select(state,positive,negative,total) 
+  dplyr::filter(!state %in% c("AS") ) %>%
+  dplyr::select(state,positive,negative,total) 
 
 # Adjust names
 colnames(state_covid_testing) <- c("Abbreviation","positive","negative","total_num_tests")

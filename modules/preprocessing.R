@@ -33,16 +33,19 @@ state_covid_testing <- left_join(state_covid_testing, population, by = c('NAME')
 
 # TODO: This is really just the test rate, not "per 1000"
 state_covid_testing <- state_covid_testing %>% 
-  mutate(tests_per_1000 = total_num_tests / Population)
+  mutate(tests_per_1000 = total_num_tests / Population)  # This is actual rate, not "per 1000"
 
 pUS.2 <- as.numeric(state_covid_testing[which(state_covid_testing$NAME=="United States"),"tests_per_1000"])
 
-pSK.2 <- 9.1 / 1000  # See: https://bit.ly/2yMyjFX
-pIT.2 <- 13.6 / 1000 # See: https://bit.ly/2yMyjFX
+#pSK.2 <- 9.1 / 1000  # See: https://bit.ly/2yMyjFX
+pSK.2 <- 10.9 / 1000  # See: https://bit.ly/2yMyjFX  UPDATED: 04/20
+pCH.2 <- 24.4 / 1000  # See: https://bit.ly/2yMyjFX   
+pIT.2 <- 22.1 / 1000  # See: https://bit.ly/2yMyjFX   
+pDE.2 <- 20.9 / 1000  # See: https://bit.ly/2yMyjFX   
+pAT.2 <- 20.4 / 1000  # See: https://bit.ly/2yMyjFX   
+pCA.2 <- 14.0 / 1000  # See: https://bit.ly/2yMyjFX   
 
-# tests_ldi <- unlist(lapply(state_covid_testing$tests_per_1000, FUN=function(x){log((x/(1-x))/(pUS.2/(1-pUS.2)))}))
-# tests_ldi <- unlist(lapply(state_covid_testing$tests_per_1000, FUN=function(x){log((x/(1-x))/(pSK.2/(1-pSK.2)))}))
-#tests_ldi <- unlist(lapply(state_covid_testing$tests_per_1000, FUN=function(x){-log(x/pSK.2)}))
+# Calculate state DIs based on a country's selected rate
 tests_ldi <- unlist(lapply(state_covid_testing$tests_per_1000, FUN=function(x){log(x/pSK.2)}))
 
 state_covid_testing <- data.frame(state_covid_testing, tests_ldi)
@@ -139,6 +142,35 @@ covid_data_states <- covid_data_states[1:51,]
 states <- data.frame(states, "death_rate_ldi"=covid_data_states$death_rate_ldi) # Append to states
 states <- data.frame(states, "covid_death_rate"=covid_data_states$p_death_rate) # Append to states
 
+##### US Racial Disparity
+# DI's based on covid_racial_data_states.wide
+# Percent cases / percent population, per-state
+
+# Unweighted population pct
+# covid_racial_data_states.wide$death_rate_ldi_nhw <- log(covid_racial_data_states.wide$nhw_deaths_pct / covid_racial_data_states.wide$nhw_un_pop_pct)
+# covid_racial_data_states.wide$death_rate_ldi_nhbaa <- log(covid_racial_data_states.wide$nhbaa_deaths_pct / covid_racial_data_states.wide$nhbaa_un_pop_pct)
+# covid_racial_data_states.wide$death_rate_ldi_nhaian <- log(covid_racial_data_states.wide$nhaian_deaths_pct / covid_racial_data_states.wide$nhaian_un_pop_pct)
+# covid_racial_data_states.wide$death_rate_ldi_nhapi <- log(covid_racial_data_states.wide$nhapi_deaths_pct / covid_racial_data_states.wide$nhapi_un_pop_pct)
+# covid_racial_data_states.wide$death_rate_ldi_hlt <- log(covid_racial_data_states.wide$hlt_deaths_pct / covid_racial_data_states.wide$hlt_un_pop_pct)
+# covid_racial_data_states.wide$death_rate_ldi_other <- log(covid_racial_data_states.wide$other_deaths_pct / covid_racial_data_states.wide$other_un_pop_pct)
+
+# Weighted population percentage
+covid_racial_data_states.wide$death_rate_ldi_nhw <- log(covid_racial_data_states.wide$nhw_deaths_pct / covid_racial_data_states.wide$nhw_wd_pop_pct)
+covid_racial_data_states.wide$death_rate_ldi_nhbaa <- log(covid_racial_data_states.wide$nhbaa_deaths_pct / covid_racial_data_states.wide$nhbaa_wd_pop_pct)
+covid_racial_data_states.wide$death_rate_ldi_nhaian <- log(covid_racial_data_states.wide$nhaian_deaths_pct / covid_racial_data_states.wide$nhaian_wd_pop_pct)
+covid_racial_data_states.wide$death_rate_ldi_nhapi <- log(covid_racial_data_states.wide$nhapi_deaths_pct / covid_racial_data_states.wide$nhapi_wd_pop_pct)
+covid_racial_data_states.wide$death_rate_ldi_hlt <- log(covid_racial_data_states.wide$hlt_deaths_pct / covid_racial_data_states.wide$hlt_wd_pop_pct)
+covid_racial_data_states.wide$death_rate_ldi_other <- log(covid_racial_data_states.wide$other_deaths_pct / covid_racial_data_states.wide$other_wd_pop_pct)
+
+# colnames(covid_racial_data_states.wide) <- covid_racial_data_states.wide %>%
+#   rename(NAME = state)
+
+# Join our new columns in by NAME
+# NOTE: This is cleaner than elsewhere and imports ALL of the race/ethnicity data
+states <- dplyr::left_join(states, covid_racial_data_states.wide[,-1], by = c("NAME" = "NAME"))
+
+
+#####
 # NY specific calculations: Death Rates
 pNY.6.deaths <- sum(NY.data$deaths)/sum(NY.data$Population)
 pNY.6.cases <- sum(NY.data$cases)/sum(NY.data$Population)
