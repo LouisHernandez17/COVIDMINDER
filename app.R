@@ -3,7 +3,7 @@ source("modules/Source.R")
 source("modules/data_load.R")
 source("modules/preprocessing.R")
 
-update_date <- "04-25-2020" # makes it easy to change all occurances when we update
+update_date <- "05-02-2020" # makes it easy to change all occurances when we update
 
 # Leaving this in case we need it
 # TODO: Implement other text as strings like this...
@@ -15,8 +15,9 @@ footer_text <- "<br><div style='font-size: 80%;'><b>COVIDMINDER analysis and vis
                                 <b>COVIDMINDER</b> is an open source project implemented on the <a href='https://shiny.rstudio.com/'>R Shiny platform</a>;
                                 see the <a href='https://github.com/TheRensselaerIDEA/COVIDMINDER'>COVIDMINDER github</a>
                                 for more information. <br><br>
+                                <a href='https://forms.gle/8LwiYAVXXN7mu9wR6'><img src='comment.png' style='float:left;width:40px;padding-right:2px;' ></a>
                                 Thanks for using <b>COVIDMINDER!</b> Please take a few moments 
-                                to fill out our short <a href='https://forms.gle/8LwiYAVXXN7mu9wR6'>comments form.</a><br>
+                                to fill out our short <a href='https://forms.gle/8LwiYAVXXN7mu9wR6'>comments form.</a><br><br>
                                 <i><a href='https://info.rpi.edu/statement-of-accessibility'>Rensselaer Statement 
                                 of Accessibility</a></i></div>"
 
@@ -25,7 +26,14 @@ whatisit_text <-"<div style='font-size:80%;line-height:1.3;'><strong>COVIDMINDER
                                 effects of COVID-19. Social and Economic Determinants are pre-existing risk factors that impact 
                                 COVID-19 outcomes. Mediations are resources and programs used to combat the pandemic.</div><br>"
 
-comments_link <-"<div style='font-size:80%;line-height:1.3;'>Thanks for using <b>COVIDMINDER!</b> Please take a few moments to fill out our short <a href='https://forms.gle/8LwiYAVXXN7mu9wR6'>comments form.</a></div>"
+comments_link <-"<a href='https://forms.gle/8LwiYAVXXN7mu9wR6'><img src='comment.png' style='float:left;width:40px;padding-right:2px;' ></a>
+                                Thanks for using <b>COVIDMINDER!</b> Please take a few moments 
+                                to fill out our short <a href='https://forms.gle/8LwiYAVXXN7mu9wR6'>comments form.</a><br><br>
+                                <i><a href='https://info.rpi.edu/statement-of-accessibility'>Rensselaer Statement 
+                                of Accessibility</a></i>"
+
+# For URL parameterization
+url1 <- url2 <- ""
 
 #### UI Code ####
 ui <- 
@@ -34,13 +42,16 @@ ui <-
       tags$title("COVIDMINDER: Where you live matters")
     ),
     navbarPage(
+      id="tab",
       theme="style.css",
       title=tags$div(class="title-text",
                      img(class="logo", src="Rensselaer_round.png"),
                      HTML("COVID<b>MINDER</b>")),
-      navbarMenu(HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (maps)</b><br>Select a USA or state outcome</div>"),
+      navbarMenu(menuName = "outcome_maps_menu",
+                 HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (maps)</b><br>Select a USA or state outcome</div>"),
       tabPanel(tags$div(class="tab-title",style="text-align:center;", #For some reason, unresponsive to class
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (USA)</b></br>Mortality Rate</div>")),
+               value="outcome_usa_mortality",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_us_mort",
@@ -73,6 +84,7 @@ ui <-
       ), 
       tabPanel(tags$div(class="tab-title",style="text-align:center;", #For some reason, unresponsive to class
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (USA)</b></br>Racial/Ethnic Disparity</div>")),
+               value="outcome_usa_racial_disparity",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_us_mort_race",
@@ -122,6 +134,7 @@ ui <-
       ), 
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>Mortality Rate</div>")),
+               value="outcome_ny_mortality",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_mort",
@@ -155,6 +168,7 @@ ui <-
                  ),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Cases</div>")),
+               value="outcome_ny_cases",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_cases",
@@ -184,9 +198,11 @@ ui <-
                            leafletOutput(outputId = "map.NY.cases", height="100%"), width=8)
                    )
                  )),
-      navbarMenu(HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (graphs)</b><br>Select a state outcome</div>"),
+      navbarMenu(menuName = "outcome_plots_menu",
+                 HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (graphs)</b><br>Select a state outcome</div>"),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Cases over Time</div>")),
+               value="outcome_ny_cases_time",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_CoT",
@@ -226,6 +242,7 @@ ui <-
                    ),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Cases/100K over Time</div>")),
+               value="outcome_ny_cases_rate",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_CoT_rates",
@@ -265,6 +282,7 @@ ui <-
       ), 
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Racial Disparity</div>")),
+               value="outcome_ny_racial_disparity",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_race",
@@ -306,6 +324,7 @@ ui <-
       ),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (CT)</b></br>COVID-19 Racial Disparity</div>")),
+               value="outcome_ct_racial_disparity",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ct_race",
@@ -344,41 +363,52 @@ ui <-
                )
       )
       ),
-      navbarMenu(HTML("<div style='font-size:90%;line-height:1.3;'><b>MEDIATION</b><br>Select a USA mediation</div>"),
+      navbarMenu(menuName = "mediation_menu",
+                 HTML("<div style='font-size:90%;line-height:1.3;'><b>MEDIATION</b><br>Select a USA mediation</div>"),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>MEDIATION (USA)</b></br>COVID-19 Testing</div>")),
+               value="mediation_usa_testing",
                sidebarLayout(fluid=FALSE,
                              sidebarPanel(
                                id = "sidebar_us_test",
                                HTML(whatisit_text),
                                HTML(paste0("<div style='font-weight:bold;line-height:1.3;'>
-                              Mediation: What are the disparities between states  in  rates of COVID-19 testing per 1k population 
-                              when compared to the South Korean rate? </div><br>
+                              Mediation: What are the disparities between US states  in  their rates of COVID-19 testing per 1k population 
+                              when compared to the average rates from other countries? When compared with the current average
+                              US rate?</div><br>
                               <div style='font-size:90%;line-height:1.2;'>
-                              South Korea is used as our testing reference rate (10.9/1000 as of 04/19/2020) because South 
-                              Korea is regarded as successfully having used testing to “flatten the curve”.<br><br>
+                              Several countries significantly effected by COVID-19 can be used as testing reference rates. 
+                              Some of these countries are regarded as having successfully  used testing to “flatten the curve”,
+                              while others are still in the midst of dealing with the crisis.<br><br>
                                The rate of testing per 1k in a state is: <br>
-                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than South Korean testing rate for disparity index &gt; 0.2</div>
-                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #ffffff; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to South Korean testing rate for -0.2 &lt; disparity index &lt; 0.2</div>
-                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than South Korean testing rate for disparity index &lt; -0.2</div>
+                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than selected country testing rate for disparity index &gt; 0.2</div>
+                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #ffffff; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to selected country testing rate for -0.2 &lt; disparity index &lt; 0.2</div>
+                                 <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than selected country testing rate for disparity index &lt; -0.2</div>
                                <i>Darker shades indicate greater disparity.</i><br><br>
                                
                                <strong>Testing Rate</strong> = number of COVID-19 tests per 1K population <br>
-                               <strong>Testing Rate Disparity Index</strong> = log(Testing Rate  in state/Testing Rate in South Korea) <br>
+                               <strong>Testing Rate Disparity Index</strong> = log(Testing Rate  in state/Testing Rate in selected country) <br>
                     <strong>Date: </strong>",update_date,"<br><br>
                                
-                               <b>DATA SOURCE:</b> <a href='http://bit.ly/39PMWpD'>JHU CSSE (daily)</a><br>
+                               <b>DATA SOURCES:</b> <a href='http://bit.ly/39PMWpD'>JHU CSSE (daily)</a>, 
+                               <a href='https://bit.ly/2yMyjFX'>Statista.com (04/29/2020)</a>
                                </div>")),
                                HTML(footer_text),
                                width=4),
                              
                              mainPanel(id = "mainpanel_us_test",
-                               tags$h4(class="map-title", "COVID-19 Testing Rate Disparities by State Compared to Average South Korean Rate"),
+                               tags$h4(class="map-title", paste0("COVID-19 Testing Rate Disparities by State Compared to Selected Country (",update_date,")")),
+                               HTML("<br><br>"),
+                               selectInput(inputId = "country",
+                                           label = "",
+                                           choices = country_testing_choices,
+                                           selected = "de"),
                                        leafletOutput(outputId = "map.testing", height="100%"), width=8)
                )
       ),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>MEDIATION (USA)</b></br>Hospital Beds</div>")),
+               value="mediation_usa_hospital_beds",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_us_hosp",
@@ -411,9 +441,11 @@ ui <-
                            leafletOutput(outputId = "map.hospital", height="100%"), width=8)
                )
       )),
-      navbarMenu(HTML("<div style='font-size:90%;line-height:1.3;'><b>DETERMINANT</b><br>Select a USA determinant</div>"),
+      navbarMenu(menuName ="determinant_menu",
+                 HTML("<div style='font-size:90%;line-height:1.3;'><b>DETERMINANT</b><br>Select a USA determinant</div>"),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>DETERMINANT (USA)</b></br>Diabetes</div>")),
+               value="determinant_usa_diabetes",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_us_db",
@@ -482,6 +514,7 @@ ui <-
       
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
                         HTML("<div style='font-size:80%;line-height:1.3;'><b>DETERMINANT (NY)</b></br>Diabetes</div>")),
+               value="determinant_ny_diabetes",
                sidebarLayout(
                  sidebarPanel(
                    id = "sidebar_ny_det",
@@ -523,15 +556,24 @@ server <- function(input, output, session) {
   
   # Render leaflet plot with all information in hover
   output$map.testing <- renderLeaflet({
+    # browser()
+    country <- input$country # selected country
+    
+    # modify states to have selected columns for our plot
+    tests_ldi <- states %>% 
+      select(starts_with("tests_ldi")) %>%
+      select(ends_with(country))
+    
+    states <- data.frame(states, "tests_ldi"=unlist(tests_ldi)) # Append to states
     
     colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
     bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     pal2 <- leaflet::colorBin(colors, domain = states$tests_ldi, bins = bins, reverse=TRUE)
 #    browser()
     labels2 <- sprintf(
-      "<strong>%s</strong> State<br/>
-      Testing Rate vs South Korea DI: %.2g<br>
-      Testing Rate: %.1f /1000",
+      paste0("<strong>%s</strong> State<br/>
+      Testing Rate vs ", toupper(country)," DI: %.2g<br>
+      Testing Rate: %.1f /1000"),
       states$NAME, states$tests_ldi, states$tests_per_1000*1000
     ) %>% lapply(htmltools::HTML)
     
@@ -558,7 +600,7 @@ server <- function(input, output, session) {
       addLegend(pal = pal2, 
                 values = ~states$tests_ldi, 
                 opacity = 0.7, 
-                title = "Disparity Index<br/>US Total Tests vs. South Korea",
+                title = paste0("Disparity Index<br/>US Total Tests vs. ",toupper(country)),
                 position = "bottomright",
                 labFormat = function(type, cuts, p) { n = length(cuts) 
                    cuts[n] = paste0(cuts[n]," lower") 
@@ -1015,70 +1057,70 @@ server <- function(input, output, session) {
     }
     highlight_points <- covid_NY_TS_plot.cases %>% 
       dplyr::filter( 
-                County == "New York State" & date == as.Date("2020-03-30") |
-                County == "Albany" & date == as.Date("2020-03-26") |
-                # County == "Allegany" & date == as.Date("2020-03-29") |
-                County == "Bronx" & date == as.Date("2020-03-25") |
-                County == "Broome" & date == as.Date("2020-04-02") |
-                # County == "Cattaraugus" & date == as.Date("2020-03-30") |
-                County == "Cayuga" & date == as.Date("2020-04-02") |
-                County == "Chautauqua" & date == as.Date("2020-04-10") |
-                # County == "Chemung" & date == as.Date("2020-04-10") |
-                County == "Chenango" & date == as.Date("2020-04-12") |
-                County == "Clinton" & date == as.Date("2020-03-26") |
-                # County == "Columbia" & date == as.Date("2020-03-29") |
-                County == "Cortland" & date == as.Date("2020-03-25") |
-                # County == "Delaware" & date == as.Date("2020-04-02") |
-                County == "Dutchess" & date == as.Date("2020-04-15") |
-                County == "Erie" & date == as.Date("2020-04-02") |
-                # County == "Essex" & date == as.Date("2020-04-10") |
-                # County == "Franklin" & date == as.Date("2020-04-10") |
-                # County == "Fulton" & date == as.Date("2020-04-12") |
-                County == "Genesee" & date == as.Date("2020-03-26") |
-                # County == "Greene" & date == as.Date("2020-03-29") |
-                County == "Hamilton" & date == as.Date("2020-03-25") |
-                County == "Herkimer" & date == as.Date("2020-04-02") |
-                # County == "Jefferson" & date == as.Date("2020-03-30") |
-                County == "Kings" & date == as.Date("2020-04-02") |
-                # County == "Lewis" & date == as.Date("2020-04-10") |
-                # County == "Livingston" & date == as.Date("2020-04-10") |
-                County == "Madison" & date == as.Date("2020-04-12") |
-                # County == "Monroe" & date == as.Date("2020-03-26") |
-                # County == "Montgomery" & date == as.Date("2020-03-29") |
-                County == "Nassau" & date == as.Date("2020-04-15") |
-                County == "New York" & date == as.Date("2020-04-10") |
-                County == "Manhattan" & date == as.Date("2020-03-30") |
-                County == "Niagara" & date == as.Date("2020-04-02") |
-                County == "Oneida" & date == as.Date("2020-04-10") |
-                County == "Onondaga" & date == as.Date("2020-04-10") |
-                # County == "Ontario" & date == as.Date("2020-04-12") |
-                County == "Orange" & date == as.Date("2020-04-18") |
-                County == "Orleans" & date == as.Date("2020-03-29") |
-                County == "Oswego" & date == as.Date("2020-03-25") |
-                County == "Otsego" & date == as.Date("2020-04-02") |
-                County == "Putnam" & date == as.Date("2020-04-12") |
-                County == "Queens" & date == as.Date("2020-04-02") |
-                County == "Rensselaer" & date == as.Date("2020-04-10") |
-                County == "Richmond" & date == as.Date("2020-04-01") |
-                County == "Rockland" & date == as.Date("2020-04-12") |
-                County == "St. Lawrence" & date == as.Date("2020-03-26") |
-                County == "Saratoga" & date == as.Date("2020-03-29") |
-                County == "Schenectady" & date == as.Date("2020-03-25") |
-                County == "Schoharie" & date == as.Date("2020-04-02") |
-                County == "Schuyler" & date == as.Date("2020-03-30") |
-                County == "Seneca" & date == as.Date("2020-04-02") |
-                # County == "Steuben" & date == as.Date("2020-04-10") |
-                County == "Suffolk" & date == as.Date("2020-04-10") |
-                County == "Sullivan" & date == as.Date("2020-04-12") |
-                # County == "Tioga" & date == as.Date("2020-03-26") |
-                County == "Tompkins" & date == as.Date("2020-04-20") |
-                County == "Ulster" & date == as.Date("2020-03-25") |
-                # County == "Warren" & date == as.Date("2020-04-02") |
-                # County == "Washington" & date == as.Date("2020-03-30") |
-                # County == "Wayne" & date == as.Date("2020-04-02") |
-                County == "Westchester" & date == as.Date("2020-04-10") |
-                # County == "Wyoming" & date == as.Date("2020-04-10") |
-                County == "Yates" & date == as.Date("2020-04-12")
+        County == "Albany" & date == as.Date("2020-04-26") |
+          # County == "Allegany" & date == as.Date("2020-03-29") |
+          County == "Bronx" & date == as.Date("2020-04-25") |
+          County == "Broome" & date == as.Date("2020-04-12") |
+          # County == "Cattaraugus" & date == as.Date("2020-03-30") |
+          County == "Cayuga" & date == as.Date("2020-04-12") |
+          County == "Chautauqua" & date == as.Date("2020-04-10") |
+          # County == "Chemung" & date == as.Date("2020-04-10") |
+          County == "Chenango" & date == as.Date("2020-04-12") |
+          County == "Clinton" & date == as.Date("2020-04-26") |
+          # County == "Columbia" & date == as.Date("2020-03-29") |
+          County == "Cortland" & date == as.Date("2020-04-25") |
+          # County == "Delaware" & date == as.Date("2020-04-02") |
+          County == "Dutchess" & date == as.Date("2020-04-12") |
+          County == "Erie" & date == as.Date("2020-04-02") |
+          # County == "Essex" & date == as.Date("2020-04-10") |
+          # County == "Franklin" & date == as.Date("2020-04-10") |
+          # County == "Fulton" & date == as.Date("2020-04-12") |
+          County == "Genesee" & date == as.Date("2020-04-26") |
+          # County == "Greene" & date == as.Date("2020-03-29") |
+          County == "Hamilton" & date == as.Date("2020-04-25") |
+          County == "Herkimer" & date == as.Date("2020-04-12") |
+          # County == "Jefferson" & date == as.Date("2020-03-30") |
+          County == "Kings" & date == as.Date("2020-04-12") |
+          # County == "Lewis" & date == as.Date("2020-04-10") |
+          # County == "Livingston" & date == as.Date("2020-04-10") |
+          County == "Madison" & date == as.Date("2020-04-12") |
+          # County == "Monroe" & date == as.Date("2020-03-26") |
+          # County == "Montgomery" & date == as.Date("2020-03-29") |
+          County == "Nassau" & date == as.Date("2020-04-15") |
+          County == "New York" & date == as.Date("2020-04-10") |
+          County == "New York State" & date == as.Date("2020-04-12") |
+          County == "Manhattan" & date == as.Date("2020-04-10") |
+          County == "Niagara" & date == as.Date("2020-04-12") |
+          County == "Oneida" & date == as.Date("2020-04-10") |
+          County == "Onondaga" & date == as.Date("2020-04-10") |
+          # County == "Ontario" & date == as.Date("2020-04-12") |
+          County == "Orange" & date == as.Date("2020-04-18") |
+          County == "Orleans" & date == as.Date("2020-04-01") |
+          County == "Oswego" & date == as.Date("2020-04-25") |
+          County == "Otsego" & date == as.Date("2020-04-12") |
+          County == "Putnam" & date == as.Date("2020-04-20") |
+          County == "Queens" & date == as.Date("2020-04-12") |
+          County == "Rensselaer" & date == as.Date("2020-04-10") |
+          County == "Richmond" & date == as.Date("2020-04-11") |
+          County == "Rockland" & date == as.Date("2020-04-12") |
+          County == "St. Lawrence" & date == as.Date("2020-04-26") |
+          County == "Saratoga" & date == as.Date("2020-04-01") |
+          County == "Schenectady" & date == as.Date("2020-04-25") |
+          County == "Schoharie" & date == as.Date("2020-04-12") |
+          County == "Schuyler" & date == as.Date("2020-04-10") |
+          County == "Seneca" & date == as.Date("2020-04-12") |
+          # County == "Steuben" & date == as.Date("2020-04-10") |
+          County == "Suffolk" & date == as.Date("2020-04-10") |
+          County == "Sullivan" & date == as.Date("2020-04-12") |
+          # County == "Tioga" & date == as.Date("2020-03-26") |
+          County == "Tompkins" & date == as.Date("2020-04-10") |
+          County == "Ulster" & date == as.Date("2020-04-20") |
+          # County == "Warren" & date == as.Date("2020-04-02") |
+          # County == "Washington" & date == as.Date("2020-03-30") |
+          # County == "Wayne" & date == as.Date("2020-04-02") |
+          County == "Westchester" & date == as.Date("2020-04-10") |
+          # County == "Wyoming" & date == as.Date("2020-04-10") |
+          County == "Yates" & date == as.Date("2020-04-12")
       )
     
     NY_region_palette.df <- NY_counties_regions %>%
@@ -1126,30 +1168,30 @@ server <- function(input, output, session) {
     }
     highlight_points <- covid_NY_TS_plot.cases %>% 
       dplyr::filter( 
-          County == "Albany" & date == as.Date("2020-03-26") |
+        County == "Albany" & date == as.Date("2020-04-26") |
           # County == "Allegany" & date == as.Date("2020-03-29") |
-          County == "Bronx" & date == as.Date("2020-03-25") |
-          County == "Broome" & date == as.Date("2020-04-02") |
+          County == "Bronx" & date == as.Date("2020-04-25") |
+          County == "Broome" & date == as.Date("2020-04-12") |
           # County == "Cattaraugus" & date == as.Date("2020-03-30") |
-          County == "Cayuga" & date == as.Date("2020-04-02") |
+          County == "Cayuga" & date == as.Date("2020-04-12") |
           County == "Chautauqua" & date == as.Date("2020-04-10") |
           # County == "Chemung" & date == as.Date("2020-04-10") |
           County == "Chenango" & date == as.Date("2020-04-12") |
-          County == "Clinton" & date == as.Date("2020-03-26") |
+          County == "Clinton" & date == as.Date("2020-04-26") |
           # County == "Columbia" & date == as.Date("2020-03-29") |
-          County == "Cortland" & date == as.Date("2020-03-25") |
+          County == "Cortland" & date == as.Date("2020-04-25") |
           # County == "Delaware" & date == as.Date("2020-04-02") |
           County == "Dutchess" & date == as.Date("2020-04-12") |
           County == "Erie" & date == as.Date("2020-04-02") |
           # County == "Essex" & date == as.Date("2020-04-10") |
           # County == "Franklin" & date == as.Date("2020-04-10") |
           # County == "Fulton" & date == as.Date("2020-04-12") |
-          County == "Genesee" & date == as.Date("2020-03-26") |
+          County == "Genesee" & date == as.Date("2020-04-26") |
           # County == "Greene" & date == as.Date("2020-03-29") |
-          County == "Hamilton" & date == as.Date("2020-03-25") |
-          County == "Herkimer" & date == as.Date("2020-04-02") |
+          County == "Hamilton" & date == as.Date("2020-04-25") |
+          County == "Herkimer" & date == as.Date("2020-04-12") |
           # County == "Jefferson" & date == as.Date("2020-03-30") |
-          County == "Kings" & date == as.Date("2020-04-02") |
+          County == "Kings" & date == as.Date("2020-04-12") |
           # County == "Lewis" & date == as.Date("2020-04-10") |
           # County == "Livingston" & date == as.Date("2020-04-10") |
           County == "Madison" & date == as.Date("2020-04-12") |
@@ -1158,31 +1200,31 @@ server <- function(input, output, session) {
           County == "Nassau" & date == as.Date("2020-04-15") |
           County == "New York" & date == as.Date("2020-04-10") |
           County == "New York State" & date == as.Date("2020-04-12") |
-          County == "Manhattan" & date == as.Date("2020-03-30") |
-          County == "Niagara" & date == as.Date("2020-04-02") |
+          County == "Manhattan" & date == as.Date("2020-04-10") |
+          County == "Niagara" & date == as.Date("2020-04-12") |
           County == "Oneida" & date == as.Date("2020-04-10") |
           County == "Onondaga" & date == as.Date("2020-04-10") |
           # County == "Ontario" & date == as.Date("2020-04-12") |
           County == "Orange" & date == as.Date("2020-04-18") |
-          County == "Orleans" & date == as.Date("2020-03-29") |
-          County == "Oswego" & date == as.Date("2020-03-25") |
-          County == "Otsego" & date == as.Date("2020-04-02") |
+          County == "Orleans" & date == as.Date("2020-04-01") |
+          County == "Oswego" & date == as.Date("2020-04-25") |
+          County == "Otsego" & date == as.Date("2020-04-12") |
           County == "Putnam" & date == as.Date("2020-04-20") |
-          County == "Queens" & date == as.Date("2020-04-02") |
+          County == "Queens" & date == as.Date("2020-04-12") |
           County == "Rensselaer" & date == as.Date("2020-04-10") |
-          County == "Richmond" & date == as.Date("2020-04-01") |
+          County == "Richmond" & date == as.Date("2020-04-11") |
           County == "Rockland" & date == as.Date("2020-04-12") |
-          County == "St. Lawrence" & date == as.Date("2020-03-26") |
-          County == "Saratoga" & date == as.Date("2020-03-29") |
-          County == "Schenectady" & date == as.Date("2020-03-25") |
-          County == "Schoharie" & date == as.Date("2020-04-02") |
-          County == "Schuyler" & date == as.Date("2020-03-30") |
-          County == "Seneca" & date == as.Date("2020-04-02") |
+          County == "St. Lawrence" & date == as.Date("2020-04-26") |
+          County == "Saratoga" & date == as.Date("2020-04-01") |
+          County == "Schenectady" & date == as.Date("2020-04-25") |
+          County == "Schoharie" & date == as.Date("2020-04-12") |
+          County == "Schuyler" & date == as.Date("2020-04-10") |
+          County == "Seneca" & date == as.Date("2020-04-12") |
           # County == "Steuben" & date == as.Date("2020-04-10") |
           County == "Suffolk" & date == as.Date("2020-04-10") |
           County == "Sullivan" & date == as.Date("2020-04-12") |
           # County == "Tioga" & date == as.Date("2020-03-26") |
-          County == "Tompkins" & date == as.Date("2020-03-29") |
+          County == "Tompkins" & date == as.Date("2020-04-10") |
           County == "Ulster" & date == as.Date("2020-04-20") |
           # County == "Warren" & date == as.Date("2020-04-02") |
           # County == "Washington" & date == as.Date("2020-03-30") |
@@ -1514,8 +1556,77 @@ server <- function(input, output, session) {
     
   })
   
+  ### The following code deals with setting or responding to parameterized URLs
+  observe(print(input$tab))
   
+  observe({
+    # This "does the right thing" for an incoming URL
+    # suppose url is http://127.0.0.1:5682/?tab=tab3c/plot
+    query <- parseQueryString(session$clientData$url_search)
+    
+    if(!is.null(query$tab)) {
+      url <- strsplit(query$tab,"/")[[1]]
+      url1 <<- url[1]
+      url2 <<- url[2]
+      updateTabsetPanel(session, 'tab', url1)
+    }
+  })
+  
+  
+  observe({
+    # Trigger this observer every time an input changes
+    params <- reactiveValuesToList(input)
+    session$doBookmark()
+  })
+  
+  onBookmarked(function(url) {
+    # Construct the replacement URL:
+    url.new <- paste0(
+      session$clientData$url_protocol,"//",
+      session$clientData$url_hostname,
+      session$clientData$url_pathname,
+      "?tab=",
+      session$clientData$url_port,
+      session$input$tab
+    )
+    #TODO: Special handling for tabs with selectors!
+    # browser()
+    updateQueryString(url.new)
+  })
+  
+  observe({ # this observer executes once, when the page loads
+    
+    data <- parseQueryString(session$clientData$url_search)
+    
+    # browser()
+    # the navbar tab and tabpanel variables are two variables 
+    # we have to pass to the client for the update to take place
+    # if nav is defined, send a message to the client to set the nav tab
+    if (! is.null(data$page)) {
+      session$sendCustomMessage(type='setNavbar', data)
+    }
+    
+    # if the tab variable is defined, send a message to client to update the tab
+    if (any(sapply(data[c('outcome_usa_mortality', 
+                          'outcome_usa_racial_disparity',
+                          'outcome_ny_mortality',
+                          'outcome_ny_cases', 
+                          'outcome_ny_racial_disparity',
+                          'outcome_ct_racial_disparity',
+                          'outcome_ny_cases_rate',
+                          'outcome_ny_cases_time',
+                          'mediation_usa_testing',
+                          'mediation_usa_hospital_beds',
+                          'determinant_usa_diabetes',
+                          'determinant_ny_diabetes'
+    )], 
+    Negate(is.null)))) {
+      # browser()
+      session$sendCustomMessage(type='setTab', data)
+    }
+    
+  })
 }
 
 #### Set up Shiny App ####
-shinyApp(ui = ui, server = server)
+shinyApp(ui = ui, server = server, enableBookmarking = "url")
