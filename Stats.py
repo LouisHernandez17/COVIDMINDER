@@ -22,6 +22,8 @@ Data['Cases per capita']=Test['Pct_positive']
 Data=Data.dropna()
 sns.set()
 plt.figure()
-
-g=sns.pairplot(Data,hue='Region',palette=Palette,y_vars=['Fatality Rate','Positive tests rate'],x_vars=['Population','Diabetes Rate'],diag_kind='hist')
+g=sns.pairplot(Data,hue='Region',palette=Palette,vars=['Population','Diabetes Rate','Fatality Rate'])
+g._legend.remove()
+plt.tight_layout(rect=[0, 0, 0.75, 1])
+plt.legend(bbox_to_anchor=(1.04, 0.5), loc="center left",fontsize=8)
 plt.show()

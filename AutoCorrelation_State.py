@@ -1,5 +1,7 @@
 import os
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 all_files = [i[0] + '/' + files for i in os.walk('data/csv', False) for files in i[2] if files[:2].isnumeric()]
 d0 = pd.read_csv(all_files[0])
@@ -27,20 +29,25 @@ for state in States:
     data=data.apply(pd.to_numeric)
     data = data.interpolate(method='linear')
     if (data['Confirmed'] > 1000).all():
-        FullData_Cases['Confirmed ' + state] = data['Confirmed']
+        FullData_Cases[state] = data['Confirmed']
     if (data['Deaths'] > 100).any():
-        FullData_Deaths['Deaths ' + state] = data['Deaths']
+        FullData_Deaths[state] = data['Deaths']
 
 #%%
 from Autoregressive import *
 
-model=VAR(p=2,FullData=FullData_Cases,num_val=7)
+model=VAR(p=1,FullData=FullData_Cases,num_val=7)
 model.fit()
-model.predict(7,plot=True,savefig=True,path='CasesPredictionValidation')
+score=model.predict(7,plot=True,score=True)
+print("Mean score Cases : {:.3f}".format(np.mean(score)))
 
+model=VAR(p=1,FullData=FullData_Deaths,num_val=7)
+model.fit()
+score=model.predict(7,plot=True,score=True)
+print("Mean score Deaths : {:.3f}".format(np.mean(score)))
 #%%
-DataArima=FullData_Deaths['Deaths Arizona'].values
-dates=FullData_Deaths['Deaths Arizona'].index
+DataArima=FullData_Deaths['Arizona'].values
+dates=FullData_Deaths['Arizona'].index
 Diff=[DataArima]
 plt.figure()
 for i in range(4):
@@ -70,16 +77,35 @@ plt.show()
 q=1
 #%%
 from statsmodels.tsa.arima_model import ARIMA
-model = ARIMA(DataArima, order=(p,d,q))
-results=model.fit(disp=0)
-print(results.summary())
-fc, se, conf = results.forecast(10, alpha=0.05)
-plt.figure()
-plt.plot([dates[-1]+datetime.timedelta(days=i+1) for i in range(len(fc))],fc,'k--',label='forecast')
-plt.plot([dates[-1]+datetime.timedelta(days=i+1) for i in range(len(fc))],conf[:,0],'k-.',label='Confidence interval')
-plt.plot([dates[-1]+datetime.timedelta(days=i+1) for i in range(len(fc))],conf[:,1],'k-.')
-plt.xticks(rotation=20)
-plt.plot(dates,DataArima,'k-',label='actual')
-plt.legend()
-plt.show()
-
+print('plop')
+for p in range(4):
+    for q in range(4):
+        scores=[]
+        print('-----------')
+        print('p=',p)
+        print('q=',q)
+        for state in FullData_Deaths.columns:
+            try :
+                DataTrain=FullData_Deaths[state].iloc[:-7]
+                dates=FullData_Deaths.index
+                DataValidation=FullData_Deaths[state].iloc[-7:]
+                model = ARIMA(DataTrain, order=(p,d,q))
+                results=model.fit(disp=0)
+                fc, se, conf = results.forecast(7, alpha=0.05)
+                Y = DataValidation.values
+                Yhat = fc
+                Ybar= np.mean(Y)
+                R2=1-sum((Y-Yhat)**2)/sum((Y-Ybar)**2)
+                scores.append(R2)
+            except :
+                ()
+                #print(state,'Impossible to estimate')
+            #     plt.figure()
+            #     plt.plot(dates[:len(DataTrain)], DataTrain, '-', label='actual')
+            #     plt.plot(dates[len(DataTrain):],fc,'--',label='forecast')
+            #     plt.plot(dates[len(DataTrain):],DataValidation,'-',label='Validation')
+            # plt.xticks(rotation=20)
+            # plt.legend()
+            #plt.show()
+        print('score', np.mean(scores))
+        print(len(scores))

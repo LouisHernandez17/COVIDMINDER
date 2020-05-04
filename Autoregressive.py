@@ -32,8 +32,10 @@ class VAR:
         T = len(self.Observed)
         E = Y - Y_pred
 
-    def predict(self, n, plot=False, savefig=False, path=None):
+    def predict(self, n, plot=False, savefig=False, path=None,score=False):
         k = len(self.Observed[0])
+        if score :
+            scores=[]
         for m in range(n):
             Z_pred = np.array([[1] + [self.Data[t - i - 1][j] for i in range(self.p) for j in range(k)] for t in
                                range(self.p + 1, len(self.Data) + 1)]).transpose()
@@ -42,6 +44,12 @@ class VAR:
             self.dates.append(self.dates[-1] + datetime.timedelta(days=1))
         if plot:
             for i in range(len(self.titles)):
+                if score :
+                    Y=self.Data_Validation[:, i]
+                    Yhat=self.Data[len(self.Observed):][:, i]
+                    Ybar=np.mean(Y)
+                    R2=1-sum((Y-Yhat)**2)/sum((Y-Ybar)**2)
+                    scores.append(R2)
                 plt.plot(self.dates[:len(self.Observed)], self.Data[:len(self.Observed)][:, i], 'k-',
                          label='Past Observed')
                 if (self.Data_Validation == self.Data_Validation).all():
@@ -51,7 +59,11 @@ class VAR:
                          label='Prediction')
                 plt.legend(framealpha=0)
                 plt.xticks(rotation=20)
+                #if score :
+                    #plt.tight_layout()
+                    #plt.text(0,0,"R2 score : {:.3f}".format(R2))
                 plt.title(self.titles[i])
                 if savefig:
                     plt.savefig(path + '/' + self.titles[i])
                 plt.show()
+        return(scores)
