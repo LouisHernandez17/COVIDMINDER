@@ -1,0 +1,18 @@
+### R ###
+# History files
+.Rhistory
+*/.Rhistory
+.Rapp.history
+
+# Session Data files
+.RData
+.RDataTmp
+*/.RData
+
+# User-specific files
+.Ruserdata
+
+#MacOS files
+.DS_Store
+*/.DS_Store
+

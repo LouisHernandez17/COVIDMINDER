@@ -70,6 +70,14 @@
 
 .form-group{
   margin-bottom:0;
+  float:left;
+}
+
+.select-bar {
+  position:absolute;
+  right:25px;
+  margin-top: 10px;
+  z-index: 999;
 }
 
 .leaflet-container {
@@ -87,6 +95,12 @@
 .leaflet-top {
   z-index: 999;
 }
+
+#rate {
+  padding-left:10px;
+}
+
+
 @media screen and (min-width:1085px){
   /*
   .title-text {
@@ -95,6 +109,13 @@
   */
   body {
     font-size: 15px;
+    max-width: 1280px;
+    margin: 0 auto;
   }
 }
 
+@media screen and (max-width:925px){
+  .NY_case_plots {
+  height: Calc(90% - 140px);
+}
+}
