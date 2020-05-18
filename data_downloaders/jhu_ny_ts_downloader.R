@@ -1,4 +1,4 @@
-# COVIDMINDER Daily data downloader (4 of 5)
+# COVIDMINDER Daily data downloader (4 of 7)
 # Source: JHU Daily Reports (github): https://bit.ly/3dMWRP6
 # FILES UPDATED BY THIS SCRIPT:
 # "data/csv/time_series/time_series_covid19_confirmed_US.csv"
@@ -146,7 +146,7 @@ covid_NY_TS_counties.deaths <- data.frame(rbind(covid_TS_New_York.deaths, covid_
 # Disable this when JHU gets their act together on NYS...
 # UPDATE: critical to only use `county` and `deaths` from this!
 covid_NY_counties.deaths <- read_csv("data/csv/time_series/covid_NY_counties.deaths.manual.csv") %>%
-  select(county, deaths)
+          select(county, deaths)
 
 # Make backup of existing WIDE data
 write_csv(read_csv("data/csv/time_series/covid_NY_TS_counties_wide.deaths.csv"),"data/csv/time_series/covid_NY_TS_counties_wide.deaths.csv.bak")

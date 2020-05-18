@@ -1,4 +1,4 @@
-# COVIDMINDER Daily data downloader (5 of 5)
+# COVIDMINDER Daily data downloader (5 of 7)
 # UPDATED: 30 April 2020
 # SOURCE: CDC Racial: "https://data.cdc.gov/resource/pj7m-y5uh.csv"
 # FILES UPDATED BY THIS SCRIPT:
@@ -12,7 +12,7 @@ cdc_race_URL <- "https://data.cdc.gov/resource/pj7m-y5uh.csv"
 download.file(cdc_race_URL, paste0("data/csv/", "states_cdc_racial_raw.csv"))
 
 # Import raw into R
-todays_raw_racial_data.bak <- todays_raw_racial_data 
+#todays_raw_racial_data.bak <- todays_raw_racial_data 
 todays_raw_racial_data <- read_csv(paste0("data/csv/", "states_cdc_racial_raw.csv"))
 
 # Rename raw columns
@@ -26,8 +26,9 @@ todays_raw_racial_data <- todays_raw_racial_data %>%
   select(-footnote)
 
 # Rewrite indicator column
+# UPDATED: They changed an indicator name!!
 todays_raw_racial_data <- todays_raw_racial_data %>%
-  mutate(indicator = replace(indicator, indicator == "Distribution of COVID deaths (%)", "deaths_pct")) %>%
+  mutate(indicator = replace(indicator, indicator == "Distribution of COVID-19 deaths (%)", "deaths_pct")) %>%
   mutate(indicator = replace(indicator, indicator == "Weighted distribution of population (%)", "wd_pop_pct")) %>%
   mutate(indicator = replace(indicator, indicator == "Unweighted distribution of population (%)", "un_pop_pct"))
 
