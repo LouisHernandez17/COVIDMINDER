@@ -96,8 +96,8 @@ for county in Counties:
                 [Counties_Cases[county].dropna().index[-1] + datetime.timedelta(days=i + 1) for i in range(len(fc))],
                 fc, '--', color=pl[0].get_color())
             dico[Regions['Region'].loc[county]] = 1
-            # plt.plot([Counties_Cases[county].dropna().index[-1] + datetime.timedelta(days=i+1)for i in range(len(fc))],conf[:,1],'-.',color=pl[0].get_color())
-            # plt.plot([Counties_Cases[county].dropna().index[-1] + datetime.timedelta(days=i+1)for i in range(len(fc))],conf[:,0],'-.',color=pl[0].get_color())
+            plt.plot([Counties_Cases[county].dropna().index[-1] + datetime.timedelta(days=i+1)for i in range(len(fc))],conf[:,1],'-.',color=pl[0].get_color())
+            plt.plot([Counties_Cases[county].dropna().index[-1] + datetime.timedelta(days=i+1)for i in range(len(fc))],conf[:,0],'-.',color=pl[0].get_color())
     except:
         print('Impossible')
 

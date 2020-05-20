@@ -76,36 +76,17 @@ plt.title("Autocorrelation")
 plt.show()
 q=1
 #%%
-from statsmodels.tsa.arima_model import ARIMA
-print('plop')
-for p in range(4):
-    for q in range(4):
+from statsmodels.tsa.statespace.varmax import VARMAX
+FullData_Deaths=FullData_Deaths.diff()
+for p in range(2,4):
+    for q in range(,4):
         scores=[]
         print('-----------')
         print('p=',p)
         print('q=',q)
-        for state in FullData_Deaths.columns:
-            try :
-                DataTrain=FullData_Deaths[state].iloc[:-7]
-                dates=FullData_Deaths.index
-                DataValidation=FullData_Deaths[state].iloc[-7:]
-                model = ARIMA(DataTrain, order=(p,d,q))
-                results=model.fit(disp=0)
-                fc, se, conf = results.forecast(7, alpha=0.05)
-                Y = DataValidation.values
-                Yhat = fc
-                Ybar= np.mean(Y)
-                R2=1-sum((Y-Yhat)**2)/sum((Y-Ybar)**2)
-                scores.append(R2)
-            except :
-                ()
-                #print(state,'Impossible to estimate')
-            #     plt.figure()
-            #     plt.plot(dates[:len(DataTrain)], DataTrain, '-', label='actual')
-            #     plt.plot(dates[len(DataTrain):],fc,'--',label='forecast')
-            #     plt.plot(dates[len(DataTrain):],DataValidation,'-',label='Validation')
-            # plt.xticks(rotation=20)
-            # plt.legend()
-            #plt.show()
-        print('score', np.mean(scores))
-        print(len(scores))
+        DataTrain=FullData_Deaths.iloc[:-7]
+        dates=FullData_Deaths.index
+        DataValidation=FullData_Deaths.iloc[-7:]
+        model = VARMAX(DataTrain, order=(p,q),enforce_stationarity=False)
+        results=model.fit()
+        results.summary()
