@@ -2,12 +2,15 @@
 source("modules/Source.R")
 source("modules/data_load.R")
 source("modules/preprocessing.R")
+source("modules/leaflet_gen.R")
+source("modules/ggplot_gen.R")
+source("modules/gt_gen.R")
 
-update_date <- "05-24-2020" # makes it easy to change all occurances when we update
+update_date <- "06-29-2020" # makes it easy to change all occurances when we update
 
 moving.avg.window <- 7 # WARNING: Behavior for moving.avg.window > number of report dates for a region is undefined.
                        # (i.e. a 20 day window if Catskill Region has 19 report dates.)
-height <- "500px"# plot heights
+height <- "600px"# plot heights
 
 # Leaving this in case we need it
 # TODO: Implement other text as strings like this...
@@ -48,26 +51,516 @@ ui <-
   tagList(
     tags$head(tags$title("COVIDMINDER: Where you live matters")),
     tags$head(includeHTML("www/analytics.html")),
-    
-    # WIDTH Getting code
-    # tags$head(tags$script('
-    #                     var width = 0;
-    #                     $(document).on("shiny:connected", function(e) {
-    #                       width = window.innerWidth;
-    #                       Shiny.onInputChange("width", width);
-    #                     });
-    #                     $(window).resize(function(e) {
-    #                       width = window.innerWidth;
-    #                       Shiny.onInputChange("width", width);
-    #                     });
-    #                     ')),
     navbarPage(
       id="tab",
       theme="style.css",
-      title=tags$div(class="title-text",
+      title=tags$a(class="title-text",
                      title = whatisit_text,
+                     href = "/",
                      img(class="logo", src="Rensselaer_round.png"),
                      HTML("COVID<b>MINDER</b>")),
+      tabPanel(title = HTML("<div><b>STATE REPORT CARDS</b></div>"),
+               value = "state_report_cards",
+                  fluidPage(
+                    fluidRow(column(12, style="text-align:center;",
+                                    selectInput(inputId = "state_name",
+                                                label = "State Selector",
+                                                choices = state.abr$name,
+                                                selected = as.character(unlist(ranking[ranking$rank==50, "name"]))),
+                                    tags$div(style = "float:right;",
+                                             tags$h3(tags$b("Date: "), update_date)))),
+                    fluidRow(column(12, style="text-align:center;",uiOutput("main_title"))),
+                    tags$br(),
+                    fluidRow(column(8, style="text-align:center;",
+                                    tags$b(tags$sup("*"),"States are ranked best to worst by their percentage change in COVID-19 cases over the past ",time.period," days."),
+                                    offset=2)),
+                    fluidRow(column(10, style="text-align:center;position:relative;",uiOutput("state.CoT.title"),
+                                    plotOutput(outputId = "state.CoT", 
+                                               height = height, 
+                                               hover = hoverOpts(id = "state.CoT.hover",
+                                                                 delay = 100,
+                                                                 delayType = "throttle")),
+                                    uiOutput("state.CoT.tooltip"), offset = 1),
+                             column(1, downloadButton("state.CoT.dl"),offset = 9),
+                             column(10, style="text-align:center;position:relative;",uiOutput("state.DoT.title"),
+                                    plotOutput(outputId = "state.DoT", 
+                                               height = height, 
+                                               hover = hoverOpts(id = "state.DoT.hover",
+                                                                 delay = 100,
+                                                                 delayType = "throttle")),
+                                    uiOutput("state.DoT.tooltip"), offset = 1)),
+                             column(1, downloadButton("state.DoT.dl"), offset = 9),
+                    fluidRow(column(8, style="text-align:center;",
+                                    tags$h2("Flattening the Curve"),
+                                    tags$p("Nationwide, states have taken various approaches to mitigate the spread of coronavirus, such as social distancing interventions and encouraging mask use where social distancing is not possible. Studies by the CDC have shown these methods reduce new COVID-19 cases, hospitalizations, and deaths."),
+                                    tags$b("Data Source: "), tags$a("CDC", href="https://wwwnc.cdc.gov/eid/article/26/8/20-1093_article"), offset=2)),
+                    tags$br(),
+                    tags$br(),
+                    fluidRow(column(8,gt_output("state.report"),
+                                    offset = 2)),
+                    fluidRow(column(12, style="text-align:center;",
+                                    tags$h1("County Level Breakdown"))),
+                    fluidRow(column(10, style="text-align:center;position:relative;",uiOutput("state.trends.title"),
+                                    tags$div(style = "height:130px;text-align:left;padding-left:4%;",
+                                    uiOutput("state.report.county.selector"),
+                                             radioButtons(inputId = "SRC.rate",
+                                                 label = "Rate",
+                                                 choices = c("Overall", "Per/100k"),
+                                                 selected = "Per/100k")),
+                                    plotOutput(outputId = "state.trends", 
+                                               height=height,
+                                               hover = hoverOpts(id = "state.trends.hover",
+                                                                 delay = 100,
+                                                                 delayType = "throttle"),
+                                               dblclick = "trends.dbl_click",
+                                               brush = brushOpts(
+                                                 id = "trends.brush",
+                                                 resetOnNew = TRUE)),
+                                    uiOutput("state.trends.tooltip"), offset = 1)),
+                             column(1, downloadButton("state.trends.dl"), offset = 9),
+                    tags$br(),
+                    fluidRow(column(4, style="text-align:center;",
+                                    tags$div(class = "info",
+                                             HTML("<h3>Disparity Color Legend</h3>
+                               Respective rates per 100k people on maps below are:<br><br>
+                                <div>
+                               <div><span style='background: #BD0026; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #D73027; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #F46D43; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
+                               <div><span style='background: #f7f7f7; border:solid 1px; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt; disparity index &lt; 0.2</div>
+                               <div><span style='background: #253494; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #4575B4; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #74ADD1; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
+                               <i style='display:inline;'>Darker shades indicate greater disparity.</i><br><br>
+                               </div>")), offset=4)),
+                    fluidRow(column(6,
+                                    tags$div(style = "text-align:center;",uiOutput("state.county.cases")),
+                                    radioButtons(inputId = "SRC.case.time",
+                                                 label = "Time Frame",
+                                                 choices = c("Daily", "Overall"),
+                                                 selected = "Daily",
+                                                 inline = T),
+                                    leafletOutput("map.cases", height = height),
+                                    column(2, downloadButton("map.cases.dl"), offset=10)),
+                             column(6,
+                                    tags$div(style = "text-align:center;",uiOutput("state.county.deaths")),
+                                    radioButtons(inputId = "SRC.death.time",
+                                                 label = "Time Frame",
+                                                 choices = c("Daily", "Overall"),
+                                                 selected = "Daily",
+                                                 inline = T),
+                                    leafletOutput("map.deaths", height = height),
+                                    column(2, downloadButton("map.deaths.dl"), offset = 10))),
+                    tags$br(),
+                    fluidRow(column(12, style="text-align:center;",
+                                    tags$h1("Comorbidities"))),
+                    fluidRow(column(12, style="text-align:center;",
+                                    uiOutput("determinant.title")),
+                             column(6,
+                                    selectInput(inputId = "state.determinant",
+                                                label = NULL,
+                                                choices = c("Diabetes", "Obesity", "CRD Mortality"),
+                                                selected = "Diabetes"),
+                                    leafletOutput("maps.determinant", height = height),
+                                    column(2, downloadButton("map.determinant.dl"), offset = 10), offset = 3),
+                             column(8, style="text-align:center;",
+                                    tags$p(textOutput("determinant.text"),
+                                           tags$br(),
+                                           tags$b("Data Source: "), tags$a("CDC", href="www.cdc.gov/diabetes/data"), ", ",
+                                           tags$a("CHR", href = 
+                                                    "https://www.countyhealthrankings.org/explore-health-rankings/measures-data-sources/county-health-rankings-model/health-factors/health-behaviors/diet-exercise/adult-obesity")), 
+                                    offset = 2
+                             )),
+                    tags$br(),
+                    tags$br()
+                    ,fluidRow(column(12, style="text-align:center;",
+                                     tags$h1("Rankings")),
+                              tags$a(name = "ranking"),
+                              column(8,
+                                     fluidRow(style="float:right;width:250px;",
+                                              selectInput(inputId = "entries",
+                                                          label = "Entries",
+                                                          choices = c(`Show 10` = 10, 
+                                                                      `Show 25` = 25,
+                                                                      `Show 50` = 50),
+                                                          selected = 10,
+                                                          width = "50%"),
+                                              radioButtons(inputId = "rank.order",
+                                                           label = "Order",
+                                                           choices = c("Ascending", "Descending"),
+                                                           selected = "Ascending",
+                                                           width="50%")),
+                                     gt_output("ranking.table"), offset = 2))
+                 )
+      ),
+      tabPanel(title = HTML("<b>NATIONAL REPORT CARD</b>"),
+               value = "national_report_card",
+               fluidRow(column(12,
+                        tags$h3(style = "float:right;",tags$b("Date: "), update_date))),
+               fluidRow(column(12, style="text-align:center;",tags$h1("United States Overview"))),
+               tags$br(),
+               fluidRow(column(10, style="text-align:center;position:relative;",
+                               tags$h2("United States COVID-19 Case Curve"),
+                               tags$h3("How have United States overall COVID-19 Cases changed over time?"),
+                               plotOutput(outputId = "US.CoT", 
+                                          height = height,
+                                          hover = hoverOpts(id = "US.CoT.hover",
+                                                           delay = 100,
+                                                           delayType = "throttle")),
+                               uiOutput("US.CoT.tooltip"), offset = 1),
+                        column(1, downloadButton("US.CoT.dl"),offset = 9),
+                        column(10, style="text-align:center;position:relative;",
+                               tags$h2("United States COVID-19 Mortality Curve"),
+                               tags$h3("How have United States overall COVID-19 deaths changed over time?"),
+                               plotOutput(outputId = "US.DoT", 
+                                          height = height,
+                                          hover = hoverOpts(id = "US.DoT.hover",
+                                                            delay = 100,
+                                                            delayType = "throttle")),
+                               uiOutput("US.DoT.tooltip"), offset = 1),
+                        column(1, downloadButton("US.DoT.dl"),offset = 9)),
+               fluidRow(column(8, style="text-align:center;",
+                               tags$h2("Flattening the Curve"),
+                               tags$p("Nationwide, states have taken various approaches to mitigate the spread of coronavirus, such as social distancing interventions and encouraging mask use where social distancing is not possible. Studies by the CDC have shown these methods reduce new COVID-19 cases, hospitalizations, and deaths."),
+                               tags$b("Data Source: "), tags$a("CDC", href="https://wwwnc.cdc.gov/eid/article/26/8/20-1093_article"), offset=2)),
+               tags$br(),
+               tags$br(),
+               fluidRow(column(8,gt_output("US.report"),
+                               offset = 2)),
+               fluidRow(column(12, style="text-align:center;",
+                               tags$h1("State Level Breakdown"))),
+               fluidRow(column(10, style="text-align:center;position:relative;",uiOutput("US.trends.title"),
+                               tags$div(style = "height:130px;text-align:left;padding-left:4%;",
+                                        uiOutput("US.report.state.selector"),
+                                        radioButtons(inputId = "NRC.rate",
+                                                     label = "Rate",
+                                                     choices = c("Overall", "Per/100k"),
+                                                     selected = "Per/100k")),
+                               plotOutput(outputId = "US.trends", 
+                                          height=height,
+                                          hover = hoverOpts(id = "US.trends.hover",
+                                                            delay = 100,
+                                                            delayType = "throttle"),
+                                          dblclick = "trends.dbl_click",
+                                          brush = brushOpts(
+                                            id = "trends.brush",
+                                            resetOnNew = TRUE)),
+                               uiOutput("US.trends.tooltip"), offset = 1),
+                        column(1, downloadButton("US.trends.dl"), offset = 9)),
+               tags$br(),
+               fluidRow(column(4, style="text-align:center;",
+                               tags$div(class = "info",
+                               HTML("<h3>Disparity Color Legend</h3>
+                               Respective rates per 100k people on maps below are:<br><br>
+                                <div>
+                               <div><span style='background: #BD0026; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #D73027; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #F46D43; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
+                               <div><span style='background: #f7f7f7; border:solid 1px; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt; disparity index &lt; 0.2</div>
+                               <div><span style='background: #253494; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #4575B4; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span>
+                                    <span style='background: #74ADD1; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
+                               <i style='display:inline;'>Darker shades indicate greater disparity.</i><br><br>
+                               </div>")), offset=4)),
+               fluidRow(column(6,
+                               tags$h2(style="text-align:center;", "US COVID-19 Case Hotspots"),
+                               tags$h3(style="text-align:center;", paste0("What are the Nationwide disparities in Daily Case Rates? (",time.period, " day average)")),
+                               leafletOutput("US.map.cases", height = height),
+                               column(2, downloadButton("US.map.cases.dl"), offset=10)),
+                        column(6,
+                               tags$h2(style="text-align:center;", "US COVID-19 Mortality Hotspots"),
+                               tags$h3(style="text-align:center;", paste0("What are the Nationwide disparities in Daily Mortality Rates? (",time.period, " day average)")),
+                               leafletOutput("US.map.deaths", height = height),
+                               column(2, downloadButton("US.map.deaths.dl"), offset = 10))),
+               tags$br(),
+               fluidRow(column(12, style="text-align:center;",
+                               uiOutput("US.determinant.title")),
+                        column(6,
+                               selectInput(inputId = "US.determinant",
+                                           label = NULL,
+                                           choices = c("Diabetes", "Obesity", "CRD Mortality", "Heart Disease Mortality"),
+                                           selected = "Diabetes"),
+                               leafletOutput("US.maps.determinant", height = height),
+                               column(2, downloadButton("US.maps.determinant.dl"), offset = 10), offset = 3),
+                        column(8, style="text-align:center;",
+                               tags$p(textOutput("US.determinant.text"),
+                                      tags$br(),
+                                      tags$b("Data Source: "), tags$a("CDC", href="www.cdc.gov/diabetes/data"), ", ",
+                                      tags$a("CHR", href = 
+                                               "https://www.countyhealthrankings.org/explore-health-rankings/measures-data-sources/county-health-rankings-model/health-factors/health-behaviors/diet-exercise/adult-obesity")), 
+                               offset = 2
+                        )),
+               tags$br(),
+               tags$br(),
+               fluidRow(column(12, style="text-align:center;",
+                               tags$h1("Rankings")),
+                        tags$a(name = "ranking"),
+                        column(8,
+                               fluidRow(style="float:right;width:250px;",
+                                        selectInput(inputId = "US.entries",
+                                                    label = "Entries",
+                                                    choices = c(`Show 10` = 10, 
+                                                                `Show 25` = 25,
+                                                                `Show 50` = 50),
+                                                    selected = 10,
+                                                    width = "50%"),
+                                        radioButtons(inputId = "US.rank.order",
+                                                     label = "Order",
+                                                     choices = c("Ascending", "Descending"),
+                                                     selected = "Ascending",
+                                                     width="50%")),
+                               gt_output("US.ranking.table"), offset = 2))
+      ),
+      navbarMenu(menuName = "outcome_plots_menu",
+                 #HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (GRAPHS)</b><br>Select a state outcome</div>"),
+                 HTML("<div><b>OUTCOME (GRAPHS)</b></div>"),
+                 
+                 tabPanel(title=tags$div(class="tab-title",style="text-align:center;",
+                                         HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Trends in new Cases (Region)</div>")),
+                          value="outcome_ny_new_cases",
+                          fluidPage( 
+                            fluidRow(class="page_title", tags$h1("OUTCOME: New York trends of new COVID-19 Cases")),
+                            fluidRow(class="page_title", tags$h2("How have new COVID-19 Cases been mitigated in New York State over time?")),
+                            fluidRow(class = "map-container",
+                                     column(8, style=paste0("height:",height,";"), id = "mainpanel_ny_new_case",
+                                            tags$div(class = "page_title",
+                                                     selectInput(inputId = "NYRegion3",
+                                                                 label = "NY Regions",
+                                                                 choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
+                                                                 selected = "All Regions"),
+                                                     dateRangeInput(inputId = "NYDate.ma",
+                                                                    label = "Date Range",
+                                                                    min = min(covid_NY_TS_plot.cases$date),
+                                                                    max = max(covid_NY_TS_plot.cases$date),
+                                                                    start = as.Date(max(covid_NY_TS_plot.cases$date)) - 31,
+                                                                    end = max(covid_NY_TS_plot.cases$date)),
+                                                     radioButtons(inputId = "rate.ma",
+                                                                  label = "",
+                                                                  choices = c("Overall", "Per/100k"),
+                                                                  selected = "Per/100k")),
+                                            tags$div(class = "NY_case_plots",
+                                                     plotOutput(outputId = "NY.cases.ma", height="100%", 
+                                                                click = clickOpts(id ="NY.cases.TS_click_ma"),
+                                                                dblclick = "NY.cases.TS_dblclick",
+                                                                brush = brushOpts(
+                                                                  id = "NY.cases.TS_brush",
+                                                                  resetOnNew = TRUE))
+                                            ),
+                                            HTML("<div style='position:absolute;bottom:0;'>
+                                <br>To zoom plot, click and drag, then double-click in select box<br>
+                                To un-zoom, double-click in plot<br>
+                                For region details, single-click on line<br>
+                                </div>")
+                                     ),
+                                     column(4, id = "sidebar_ny_new_case",
+                                            tags$h2("New York Regions Map"),
+                                            img(src="New-York-Regional-Map.png",style="width: 90%;"),
+                                            HTML(paste0("<div>
+                               <strong>Date: </strong>",update_date,"<br>
+                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a>
+                               </div>")),
+                                            HTML("<h2>Phase One: Capital Region, Central New York, Finger Lakes, Long Island, Mid-Hudson, Mohawk Valley, 
+                                                 North Country, Southern Tier and Western New York are allowed to partially reopen </h2>"),
+                                            HTML("<b>Data Source:</b> <a href='https://forward.ny.gov/industries-reopening-phase'>NY Gov</a>"),
+                                            uiOutput("click_info_ma")
+                                     ))
+                          )
+                 ),
+                 tabPanel(tags$div(class="tab-title",style="text-align:center;",
+                                   HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Trends in Mortality (Region)</div>")),
+                          value="outcome_ny_cases_time",
+                          fluidPage(
+                            fluidRow(class="page_title", tags$h1("OUTCOME: New York Counties trends of new COVID-19 Deaths")),
+                            fluidRow(class="page_title", tags$h2("How have new COVID-19 Deaths been mitigated in New York State over time?")),
+                            fluidRow(class = "map-container",
+                                     
+                                     column(8, style=paste0("height:",height,";"),id = "mainpanel_ny_CoT",
+                                            tags$div(
+                                              selectInput(inputId = "NYRegion",
+                                                          label = "NY Regions",
+                                                          choices = c("All Regions", sort(unique(covid_NY_TS_plot.deaths$Region))),
+                                                          selected = "All Regions"),
+                                            #   selectInput(inputId = "NYCounty",
+                                            #               label = "NY Counties",
+                                            #               choices = c("All Counties", sort(unique(covid_NY_TS_plot.cases$County))),
+                                            #               selected = 1)
+                                            # ),
+                                            dateRangeInput(inputId = "NYDoTDate",
+                                                           label = "Date Range",
+                                                           min = min(covid_NY_TS_plot.deaths$date),
+                                                           max = max(covid_NY_TS_plot.deaths$date),
+                                                           start = as.Date(max(covid_NY_TS_plot.deaths$date)) - 31,
+                                                           end = max(covid_NY_TS_plot.deaths$date)),
+                                            radioButtons(inputId = "rate.DoT",
+                                                         label = "",
+                                                         choices = c("Overall", "Per/100k"),
+                                                         selected = "Per/100k")),
+                                            tags$div(class = "NY_case_plots",
+                                                     plotOutput(outputId = "NY.deaths.ma", height="100%", 
+                                                                click = clickOpts(id ="NY.cases.TS_click"),
+                                                                dblclick = "NY.cases.TS_dblclick",
+                                                                brush = brushOpts(
+                                                                  id = "NY.cases.TS_brush",
+                                                                  resetOnNew = TRUE))
+                                            ),
+                                            HTML("<div style='position:absolute;bottom:0;'>
+                                <br>To zoom plot, click and drag, then double-click in select box<br>
+                                To un-zoom, double-click in plot<br>
+                                For county details, single-click on line<br>
+                                </div>")),
+                                     column(4,
+                                            id = "sidebar_ny_CoT",
+                                            tags$h2("New York Regions Map"),
+                                            img(src="New-York-Regional-Map.png",style="width: 90%;"),
+                                            HTML(paste0("<div>
+                               <strong>Date: </strong>",update_date,"<br>
+                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a> and 
+                               <a href='https://usafacts.org/visualizations/coronavirus-covid-19-spread-map/'>USA Facts</a>
+                               </div>")),
+                                            HTML("<h2>Phase One: Capital Region, Central New York, Finger Lakes, Long Island, Mid-Hudson, Mohawk Valley, 
+                                                 North Country, Southern Tier and Western New York are allowed to partially reopen </h2>"),
+                                            HTML("<b>Data Source:</b> <a href='https://forward.ny.gov/industries-reopening-phase'>NY Gov</a><br>
+                               "),
+                                            uiOutput("click_info")
+                                     )
+                            )
+                          )
+                 ),
+                 tabPanel(title=tags$div(class="tab-title",style="text-align:center;",
+                                         HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Mortality over Time (County)</div>")),
+                          value="outcome_ny_cases_time_region",
+                          fluidPage(
+                            fluidRow(class="page_title", tags$h1("OUTCOME: New York County COVID-19 Deaths over time")),
+                            fluidRow(class="page_title", tags$h2("How have COVID-19 Deaths increased across New York State over time?")),
+                            fluidRow(class = "map-container",
+                                     column(8,style=paste0("height:",height,";"), id = "mainpanel_ny_CoT_region",
+                                            selectInput(inputId = "NYCounty",
+                                                        label = "NY Counties",
+                                                        choices = c("All Counties", sort(covid_NY_TS_plot.deaths %>%
+                                                                                           filter(Region != "New York City") %>%
+                                                                                           select(County) %>%
+                                                                                           unlist() %>%
+                                                                                           unique() %>%
+                                                                                           c("New York City"))),
+                                                        selected = "All Counties"),
+                                            dateRangeInput(inputId = "NYcDoTDate",
+                                                           label = "Date Range",
+                                                           min = min(covid_NY_TS_plot.deaths$date),
+                                                           max = max(covid_NY_TS_plot.deaths$date),
+                                                           start = as.Date(max(covid_NY_TS_plot.deaths$date)) - 62,
+                                                           end = max(covid_NY_TS_plot.deaths$date)),
+                                            radioButtons(inputId = "rate.cDoT",
+                                                         label = "",
+                                                         choices = c("Overall", "Per/100k"),
+                                                         selected = "Per/100k"),
+                                            tags$div(class = "NY_case_plots",
+                                                     plotOutput(outputId = "NY.deaths.TS", height="100%", 
+                                                                click = clickOpts(id ="NY.cases.TS_click_reg"),
+                                                                dblclick = "NY.cases.TS_dblclick",
+                                                                brush = brushOpts(
+                                                                  id = "NY.cases.TS_brush",
+                                                                  resetOnNew = TRUE))
+                                            ),
+                                            HTML("<div style='position:absolute;bottom:0;'>
+                                <br>To zoom plot, click and drag, then double-click in select box<br>
+                                To un-zoom, double-click in plot<br>
+                                For county details, single-click on line<br>
+                                </div>")),
+                                     column(4, id = "sidebar_ny_CoT_region",
+                                            tags$h2("New York Regions Map"),
+                                            img(src="New-York-Regional-Map.png",style="width: 90%;"),
+                                            HTML(paste0("<div>
+                               <strong>Date: </strong>",update_date,"<br>
+                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a> and 
+                                                 <a href='https://usafacts.org/visualizations/coronavirus-covid-19-spread-map/'>USA Facts</a>
+                               </div>")),
+                                            HTML("<h2>Phase One: Capital Region, Central New York, Finger Lakes, Long Island, Mid-Hudson, Mohawk Valley, 
+                                                 North Country, Southern Tier and Western New York are allowed to partially reopen </h2>"),
+                                            HTML("<b>Data Source:</b> <a href='https://forward.ny.gov/industries-reopening-phase'>NY Gov</a><br>"),
+                                            uiOutput("click_info_reg"))
+                            )
+                          )
+                 ),
+                 tabPanel(tags$div(class="tab-title",style="text-align:center;",
+                                   HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Racial Disparity</div>")),
+                          value="outcome_ny_racial_disparity",
+                          fluidPage(
+                            fluidRow(class="page_title", tags$h1("OUTCOME: New York Racial Disparities of COVID-19 mortality")),
+                            fluidRow(class="page_title", tags$h2("Do minorities make up a higher percentage of COVID-19 deaths when compared to 
+                        their population percentage? Do New York City and the rest of New York State have 
+                        different disparities in minority COVID-19 deaths?")),
+                            fluidRow(class = "map-container",
+                                     column(8,style=paste0("height:",height,";"), id = "mainpanel_ny_race", 
+                                            plotOutput(outputId = "NY.race.nys", height="50%"), 
+                                            plotOutput(outputId = "NY.race.nyc", height="50%")),
+                                     column(4,
+                                            id = "sidebar_ny_race",
+                                            #HTML(whatisit_text),
+                                            HTML("
+                        <div>
+                        <a href='https://bit.ly/2Krl5RG'>Evidence suggests</a> that COVID-19 deaths may be higher for certain racial/ethnic groups.<br><br>
+                        If the percentage  of COVID-19 deaths experienced by a racial/ethnic group is higher than that 
+                        group’s population percentage for a region, this suggests that COVID-19 may have a disparate 
+                        impact on that group in that region. Social and economic determinants may contribute to this disparity. <br><br>"),
+                                            HTML("For each racial/ethnic group, the proportion of COVID-19 deaths for that group is:<br>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than population percentage for disparity index &gt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to the population percentage for -0.2 &lt;disparity index &lt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than population percentage for disparity index &lt; -0.2</div>
+                               <i>Darker shades indicate greater disparity.</i><br><br>
+                               
+                               <strong>Group COVID-19 Death Percentage</strong> = number of COVID-19 deaths for group/total COVID-19 deaths<br>
+                               <strong>Population Percentage</strong> = number of residents from that group/ total number of residents<br>
+                               <strong>Death Rate Disparity Index</strong> = log(Group COVID-19 Death Percentage/Population Percentage)
+                               <br>
+                        </div>"
+                                            ),
+                                            HTML(paste0("<div>
+                               <br><br>
+                               <strong>Date: </strong>",update_date,"<br><br>
+                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/2VehafT'>New York State Dept. of Health COVIDTracker (daily)</a><br>
+                               </div>")))
+                            )
+                          )
+                 ),
+                 tabPanel(tags$div(class="tab-title",style="text-align:center;",
+                                   HTML("<div><b>OUTCOME (CT)</b></br>COVID-19 Racial Disparity</div>")),
+                          value="outcome_ct_racial_disparity",
+                          fluidPage(
+                            fluidRow(class="page_title", tags$h1("OUTCOME: Connecticut Racial Disparities of COVID-19 mortality")),
+                            fluidRow(class="page_title", tags$h2("Do minorities in Connecticut make up a higher percentage of COVID-19 deaths when compared to 
+                        their population percentage?")),
+                            fluidRow(class = "map-container",
+                                     column(8, id = "mainpanel_ct_race", 
+                                            plotOutput(outputId = "NY.race.ct", height=height)),
+                                     column(4, 
+                                            id = "sidebar_ct_race",
+                                            #HTML(whatisit_text),
+                                            HTML("
+                        <div>
+                        <a href='https://bit.ly/2Krl5RG'>Evidence suggests</a> that COVID-19 deaths may be higher for certain racial/ethnic groups.<br><br>
+                        If the percentage  of COVID-19 deaths experienced by a racial/ethnic group is higher than that 
+                        group’s population percentage for a region, this suggests that COVID-19 may have a disparate 
+                        impact on that group in that region. Social and economic determinants may contribute to this disparity. <br><br>"),
+                                            HTML("For each racial/ethnic group, the proportion of COVID-19 deaths for that group is:<br>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than population percentage for disparity index &gt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to the population percentage for -0.2 &lt;disparity index &lt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than population percentage for disparity index &lt; -0.2</div>
+                               <i>Darker shades indicate greater disparity.</i><br><br>
+                               
+                               <strong>Group COVID-19 Death Percentage</strong> = number of COVID-19 deaths for group/total COVID-19 deaths<br>
+                               <strong>Population Percentage</strong> = number of residents from that group/ total number of residents<br>
+                               <strong>Death Rate Disparity Index</strong> = log(Group COVID-19 Death Percentage/Population Percentage)
+                               <br>
+                        </div>"
+                                            ),
+                                            HTML(paste0("<div>
+                               <br><br>
+                               <strong>Date: </strong>",update_date,"<br><br>
+                               <b>DATA SOURCE:</b> <a href='https://bit.ly/3bJ77GZ'>ct.gov</a><br>
+                               </div>")))
+                            )
+                          )
+                 )),
       navbarMenu(menuName = "outcome_maps_menu",
                  HTML("<div><b>OUTCOME (MAPS)</b></div>"),
       tabPanel(tags$div(class="tab-title",style="text-align:center;", #For some reason, unresponsive to class
@@ -156,15 +649,20 @@ ui <-
                ), 
       ), 
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>OUTCOME (NY)</b></br>Mortality Rate</div>")),
-               value="outcome_ny_mortality",
+                        HTML("<div><b>OUTCOME (STATE)</b></br>Mortality Rate</div>")),
+               value="outcome_state_mortality",
                fluidPage(
-                   fluidRow(class="page_title", tags$h1("OUTCOME: New York rates of COVID-19 Mortality")),
-                   fluidRow(class="page_title", tags$h2("What are the disparities between counties of New York
-                               in rates of COVID-19 deaths per 100k population when compared to the average USA rate?")),
+                   fluidRow(class="page_title", uiOutput("state_mort_heading")),
                    fluidRow(class="map-container",
                    column(8,id = "mainpanel_ny_mort",
-                           tags$h3(class="map-title", "COVID-19 Mortality Rate Disparities by County in New York Compared to Average US Rate"),
+                          uiOutput("state_mort_map_title"),
+                          tags$div(class = "select-bar",
+                                   selectInput(
+                                     inputId = "state_mort",
+                                     label = NULL,
+                                     choices = state.abr$abr,
+                                     selected = "NY"    
+                                   )),
                            leafletOutput(outputId = "map.NY.deaths", height = height)),
                    column(4,
                           id = "sidebar_ny_mort",
@@ -172,7 +670,7 @@ ui <-
                           HTML(paste0("<div>
                                The rate of COVID-19 deaths per 100k in a county is<br>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #ffffff; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
                                <i>Darker shades indicate greater disparity.</i><br><br>
                                
@@ -181,7 +679,7 @@ ui <-
                                <strong>Date: </strong>",update_date,"<br><br>
                                
                                <b>DATA SOURCE:</b> <a href='http://bit.ly/39PMWpD'>JHU CSSE (daily)</a> and 
-                               <a href='https://on.ny.gov/2VehafT'>New York State Dept. of Health COVIDTracker (daily)</a><br>
+                               <a href='https://usafacts.org/visualizations/coronavirus-covid-19-spread-map/'>USA Facts</a><br>
                                
                                </div>"))
                           #HTML(footer_text),
@@ -191,17 +689,21 @@ ui <-
                  
                  )),
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Cases</div>")),
-               value="outcome_ny_cases",
+                        HTML("<div><b>OUTCOME (STATE)</b></br>COVID-19 Cases</div>")),
+               value="outcome_state_cases",
                fluidPage(
-                 fluidRow(class="page_title", tags$h1("OUTCOME: New York rates of COVID-19 Cases")),
-                 fluidRow(class="page_title", tags$h2("What are the disparities between New York counties in the rate of COVID-19 
-                               cases per 100k population when compared to the average United States 
-                               rate?")),
+                 fluidRow(class="page_title", uiOutput("state_case_heading")),
                  fluidRow(class = "map-container",
                  column(8, id = "mainpanel_ny_cases",
-                         tags$h3(class="map-title", "COVID-19 Case Rate Disparities by County in New York  Compared to Average US Rate"),
-                         leafletOutput(outputId = "map.NY.cases", height=height)),
+                        uiOutput("state_case_map_title"),
+                        tags$div(class = "select-bar",
+                                 selectInput(
+                                   inputId = "state_case",
+                                   label = NULL,
+                                   choices = state.abr$abr,
+                                   selected = "NY"    
+                                 )), 
+                        leafletOutput(outputId = "map.NY.cases", height=height)),
                  column(4,
                    id = "sidebar_ny_cases",
                    #HTML(whatisit_text),
@@ -209,7 +711,7 @@ ui <-
                                
                                The rate of COVID-19 deaths per 100k in a county is<br>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #ffffff; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
+                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
                                <i>Darker shades indicate greater disparity.</i><br><br>
                                
@@ -222,323 +724,6 @@ ui <-
                  )
                    )
                  )),
-      navbarMenu(menuName = "outcome_plots_menu",
-                 #HTML("<div style='font-size:90%;line-height:1.3;'><b>OUTCOME (GRAPHS)</b><br>Select a state outcome</div>"),
-                 HTML("<div><b>OUTCOME (GRAPHS)</b></div>"),
-                 
-               tabPanel(title=tags$div(class="tab-title",style="text-align:center;",
-                            HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Trends in new Cases (Region)</div>")),
-               value="outcome_ny_new_cases",
-               fluidPage( 
-                 fluidRow(class="page_title", tags$h1("OUTCOME: New York trends of new COVID-19 Cases")),
-                 fluidRow(class="page_title", tags$h2("How have new COVID-19 Cases been mitigated in New York State over time?")),
-                 fluidRow(class = "map-container",
-                 column(8, style=paste0("height:",height,";"), id = "mainpanel_ny_new_case",
-                           tags$div(class = "page_title",
-                           selectInput(inputId = "NYRegion3",
-                                       label = "NY Regions",
-                                       choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
-                                       selected = "All Regions"),
-                           dateRangeInput(inputId = "NYDate.ma",
-                                          label = "Date Range",
-                                          min = min(covid_NY_TS_plot.cases$date),
-                                          max = as.Date(update_date, format = "%m-%d-%Y") - 1,
-                                          start = as.Date(update_date, format = "%m-%d-%Y") - 31,
-                                          end = as.Date(update_date, format = "%m-%d-%Y") - 1),
-                           radioButtons(inputId = "rate.ma",
-                                        label = "",
-                                        choices = c("Overall", "Per/100k"),
-                                        selected = "Per/100k")),
-                           tags$div(class = "NY_case_plots",
-                                    plotOutput(outputId = "NY.cases.ma", height="100%", 
-                                               click = clickOpts(id ="NY.cases.TS_click_ma"),
-                                               dblclick = "NY.cases.TS_dblclick",
-                                               brush = brushOpts(
-                                                 id = "NY.cases.TS_brush",
-                                                 resetOnNew = TRUE))
-                           ),
-                           HTML("<div style='position:absolute;bottom:0;'>
-                                <br>To zoom plot, click and drag, then double-click in select box<br>
-                                To un-zoom, double-click in plot<br>
-                                For region details, single-click on line<br>
-                                </div>")
-                           ),
-                 column(4, id = "sidebar_ny_new_case",
-                        img(src="New-York-Regional-Map.png",style="width: 90%;padding-left: 10%;"),
-                        HTML(paste0("<div>
-                               <strong>Date: </strong>",update_date,"<br><br>
-                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a><br>
-                               </div>")),
-                        uiOutput("click_info_ma")
-                 ))
-               )
-      ),
-      tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Cases over Time (County)</div>")),
-               value="outcome_ny_cases_time",
-               fluidPage(
-                 fluidRow(class="page_title", tags$h1("OUTCOME: New York Counties total COVID-19 Cases over time")),
-                 fluidRow(class="page_title", tags$h2("How have COVID-19 Cases increased across New York State over time?")),
-                 fluidRow(class = "map-container",
-                          
-                          column(8, style=paste0("height:",height,";"),id = "mainpanel_ny_CoT",
-                                 tags$div(
-                                   # selectInput(inputId = "NYRegion",
-                                   #             label = "NY Regions",
-                                   #             choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
-                                   #             selected = "All Regions"),
-                                   selectInput(inputId = "NYCounty",
-                                               label = "NY Counties",
-                                               choices = c("All Counties", sort(unique(covid_NY_TS_plot.cases$County))),
-                                               selected = 1)
-                                 ),
-                                 dateRangeInput(inputId = "NYCoTDate",
-                                                label = "Date Range",
-                                                min = min(covid_NY_TS_plot.cases$date),
-                                                max = as.Date(update_date, format = "%m-%d-%Y") - 1,
-                                                start = as.Date(update_date, format = "%m-%d-%Y") - 62,
-                                                end = as.Date(update_date, format = "%m-%d-%Y") - 1),
-                                 radioButtons(inputId = "rate.CoT",
-                                              label = "",
-                                              choices = c("Overall", "Per/100k"),
-                                              selected = "Per/100k"),
-                                 tags$div(class = "NY_case_plots",
-                                          plotOutput(outputId = "NY.cases.TS", height="100%", 
-                                                     click = clickOpts(id ="NY.cases.TS_click"),
-                                                     dblclick = "NY.cases.TS_dblclick",
-                                                     brush = brushOpts(
-                                                       id = "NY.cases.TS_brush",
-                                                       resetOnNew = TRUE))
-                                 ),
-                                 HTML("<div style='position:absolute;bottom:0;'>
-                                <br>To zoom plot, click and drag, then double-click in select box<br>
-                                To un-zoom, double-click in plot<br>
-                                For county details, single-click on line<br>
-                                </div>")),
-                 column(4,
-                   id = "sidebar_ny_CoT",
-                   img(src="New-York-Regional-Map.png",style="width: 90%;padding-left: 10%;"),
-                   HTML(paste0("<div>
-                               <br><br>
-                               <strong>Date: </strong>",update_date,"<br><br>
-                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a><br>
-                               </div>")),
-                   uiOutput("click_info"))
-                 )
-                   )
-                   ),
-      tabPanel(title=tags$div(class="tab-title",style="text-align:center;",
-                              HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Cases over Time (Region)</div>")),
-               value="outcome_ny_cases_time_region",
-               fluidPage(
-                 fluidRow(class="page_title", tags$h1("OUTCOME: New York Region total COVID-19 Cases over time")),
-                 fluidRow(class="page_title", tags$h2("How have COVID-19 Cases increased across New York State over time?")),
-                 fluidRow(class = "map-container",
-                 column(8,style=paste0("height:",height,";"), id = "mainpanel_ny_CoT_region",
-                           selectInput(inputId = "NYRegion2",
-                                       label = "NY Regions",
-                                       choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
-                                       selected = "All Regions"),
-                           dateRangeInput(inputId = "NYRegionDate",
-                                          label = "Date Range",
-                                          min = min(covid_NY_TS_plot.cases$date),
-                                          max = as.Date(update_date, format = "%m-%d-%Y") - 1,
-                                          start = as.Date(update_date, format = "%m-%d-%Y") - 62,
-                                          end = as.Date(update_date, format = "%m-%d-%Y") - 1),
-                           radioButtons(inputId = "rate.CoT.reg",
-                                        label = "",
-                                        choices = c("Overall", "Per/100k"),
-                                        selected = "Per/100k"),
-                           tags$div(class = "NY_case_plots",
-                                    plotOutput(outputId = "NY.cases.TS.region", height="100%", 
-                                               click = clickOpts(id ="NY.cases.TS_click_reg"),
-                                               dblclick = "NY.cases.TS_dblclick",
-                                               brush = brushOpts(
-                                                 id = "NY.cases.TS_brush",
-                                                 resetOnNew = TRUE))
-                           ),
-                           HTML("<div style='position:absolute;bottom:0;'>
-                                <br>To zoom plot, click and drag, then double-click in select box<br>
-                                To un-zoom, double-click in plot<br>
-                                For county details, single-click on line<br>
-                                </div>")),
-                 column(4, id = "sidebar_ny_CoT_region",
-                        img(src="New-York-Regional-Map.png",style="width: 90%;padding-left: 10%;"),
-                        HTML(paste0("<div>
-                               <br><br>
-                               <strong>Date: </strong>",update_date,"<br><br>
-                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a><br>
-                               </div>")),
-                        uiOutput("click_info_reg"))
-                 )
-               )
-      ),
-      #tabPanel(tags$div(class="tab-title",style="text-align:center;",
-      #                  HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Cases/100K over Time</div>")),
-      #         value="outcome_ny_cases_rate",
-      #         sidebarLayout(
-      #           sidebarPanel(
-      #             id = "sidebar_ny_CoT_rates",
-      #             #HTML(whatisit_text),
-      #             HTML("<div style='font-weight:bold;line-height:1.3;'>
-      #                Outcome: How have COVID-19 Cases per 100K population increased across New York State over time?</div> <br>"),
-      #             img(src="New-York-Regional-Map.png",style="width: 90%;padding-left: 10%;"),
-      #             HTML(paste0("<div style='font-size:90%;line-height:1.2;'>
-      #                   <br><br>
-      #                   <strong>Date: </strong>",update_date,"<br><br>
-      #                   <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a><br>
-      #                   </div>")),
-      #             #HTML(footer_text),
-      #             width=4),
-      #           
-      #           mainPanel(id = "mainpanel_ny_CoT_rates",
-      #                      tags$div(
-      #                      selectInput(inputId = "NYRegion.rates",
-      #                                  label = "NY Regions",
-      #                                  choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
-      #                                  selected = "All Regions"),
-      #                      selectInput(inputId = "NYCounty.rates",
-      #                                  label = "NY Counties",
-      #                                  choices = c("All Counties", sort(unique(covid_NY_TS_plot.cases$County))),
-      #                                  selected = 1)
-      #                      ),
-      #                      tags$div(class = "NY_case_plots",
-      #                      plotOutput(outputId = "NY.cases.TS.rates", height="85%",
-      #                                 click = clickOpts(id ="NY.cases.TS.rates_click"),
-      #                                 dblclick = "NY.cases.TS.rates_dblclick",
-      #                                 brush = brushOpts(
-      #                                   id = "NY.cases.TS.rates_brush",
-      #                                   resetOnNew = TRUE))
-      #                      ),
-      #                      HTML("<div style='font-size:80%;line-height:1.3;position:absolute;bottom:0;'>
-      #                           <br>To zoom plot, click and drag, then double-click in select box<br>
-      #                           To un-zoom, double-click in plot<br>
-      #                           For county details, single-click on line<br>
-      #                           </div>"),
-      #                      uiOutput("click_info_rates"), 
-      #                      width = 8)
-      #          )
-      # ), 
-      # tabPanel(tags$div(class="tab-title",style="text-align:center;",
-      #                   HTML("<div style='font-size:80%;line-height:1.3;'><b>OUTCOME (NY)</b></br>COVID-19 Cases/100K over Time (Regions)</div>")),
-      #          value="outcome_ny_cases_rate_regions",
-      #          sidebarLayout(
-      #            sidebarPanel(
-      #              id = "sidebar_ny_CoT_rates_regions",
-      #              #HTML(whatisit_text),
-      #              HTML("<div style='font-weight:bold;line-height:1.3;'>
-      #                 Outcome: How have COVID-19 Cases per 100K population increased across New York State over time?</div> <br>"),
-      #              img(src="New-York-Regional-Map.png",style="width: 90%;padding-left: 10%;"),
-      #              HTML(paste0("<div style='font-size:90%;line-height:1.2;'>
-      #                    <br><br>
-      #                    <strong>Date: </strong>",update_date,"<br><br>
-      #                    <b>DATA SOURCE:</b> <a href='https://on.ny.gov/39VXuCO'>heath.data.ny.gov (daily)</a><br>
-      #                    </div>")),
-      #              #HTML(footer_text),
-      #              width=4),
-      #            
-      #            mainPanel(id = "mainpanel_ny_CoT_rates_regions",
-      #                        selectInput(inputId = "NYRegion.rates.reg",
-      #                                    label = "NY Regions",
-      #                                    choices = c("All Regions", sort(unique(covid_NY_TS_plot.cases$Region))),
-      #                                    selected = "All Regions"),
-      #                      tags$div(class = "NY_case_plots",
-      #                               plotOutput(outputId = "NY.cases.TS.rates.reg", height="85%",
-      #                                          click = clickOpts(id ="NY.cases.TS.rates_click.reg"),
-      #                                          dblclick = "NY.cases.TS.rates_dblclick",
-      #                                          brush = brushOpts(
-      #                                            id = "NY.cases.TS.rates_brush",
-      #                                            resetOnNew = TRUE))
-      #                      ),
-      #                      HTML("<div style='font-size:80%;line-height:1.3;position:absolute;bottom:0;'>
-      #                           <br>To zoom plot, click and drag, then double-click in select box<br>
-      #                           To un-zoom, double-click in plot<br>
-      #                           For county details, single-click on line<br>
-      #                           </div>"),
-      #                      uiOutput("click_info_rates_reg"), 
-      #                      width = 8)
-      #          )
-      # ),
-      tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>OUTCOME (NY)</b></br>COVID-19 Racial Disparity</div>")),
-               value="outcome_ny_racial_disparity",
-               fluidPage(
-                 fluidRow(class="page_title", tags$h1("OUTCOME: New York Racial Disparities of COVID-19 mortality")),
-                 fluidRow(class="page_title", tags$h2("Do minorities make up a higher percentage of COVID-19 deaths when compared to 
-                        their population percentage? Do New York City and the rest of New York State have 
-                        different disparities in minority COVID-19 deaths?")),
-                 fluidRow(class = "map-container",
-                 column(8,style=paste0("height:",height,";"), id = "mainpanel_ny_race", 
-                          plotOutput(outputId = "NY.race.nys", height="50%"), 
-                          plotOutput(outputId = "NY.race.nyc", height="50%")),
-                 column(4,
-                   id = "sidebar_ny_race",
-                   #HTML(whatisit_text),
-                   HTML("
-                        <div>
-                        <a href='https://bit.ly/2Krl5RG'>Evidence suggests</a> that COVID-19 deaths may be higher for certain racial/ethnic groups.<br><br>
-                        If the percentage  of COVID-19 deaths experienced by a racial/ethnic group is higher than that 
-                        group’s population percentage for a region, this suggests that COVID-19 may have a disparate 
-                        impact on that group in that region. Social and economic determinants may contribute to this disparity. <br><br>"),
-                   HTML("For each racial/ethnic group, the proportion of COVID-19 deaths for that group is:<br>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than population percentage for disparity index &gt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to the population percentage for -0.2 &lt;disparity index &lt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than population percentage for disparity index &lt; -0.2</div>
-                               <i>Darker shades indicate greater disparity.</i><br><br>
-                               
-                               <strong>Group COVID-19 Death Percentage</strong> = number of COVID-19 deaths for group/total COVID-19 deaths<br>
-                               <strong>Population Percentage</strong> = number of residents from that group/ total number of residents<br>
-                               <strong>Death Rate Disparity Index</strong> = log(Group COVID-19 Death Percentage/Population Percentage)
-                               <br>
-                        </div>"
-                   ),
-                   HTML(paste0("<div>
-                               <br><br>
-                               <strong>Date: </strong>",update_date,"<br><br>
-                               <b>DATA SOURCE:</b> <a href='https://on.ny.gov/2VehafT'>New York State Dept. of Health COVIDTracker (daily)</a><br>
-                               </div>")))
-                 )
-               )
-      ),
-      tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>OUTCOME (CT)</b></br>COVID-19 Racial Disparity</div>")),
-               value="outcome_ct_racial_disparity",
-               fluidPage(
-                 fluidRow(class="page_title", tags$h1("OUTCOME: Connecticut Racial Disparities of COVID-19 mortality")),
-                 fluidRow(class="page_title", tags$h2("Do minorities in Connecticut make up a higher percentage of COVID-19 deaths when compared to 
-                        their population percentage?")),
-                 fluidRow(class = "map-container",
-                 column(8, id = "mainpanel_ct_race", 
-                          plotOutput(outputId = "NY.race.ct", height=height)),
-                 column(4, 
-                   id = "sidebar_ct_race",
-                   #HTML(whatisit_text),
-                   HTML("
-                        <div>
-                        <a href='https://bit.ly/2Krl5RG'>Evidence suggests</a> that COVID-19 deaths may be higher for certain racial/ethnic groups.<br><br>
-                        If the percentage  of COVID-19 deaths experienced by a racial/ethnic group is higher than that 
-                        group’s population percentage for a region, this suggests that COVID-19 may have a disparate 
-                        impact on that group in that region. Social and economic determinants may contribute to this disparity. <br><br>"),
-                   HTML("For each racial/ethnic group, the proportion of COVID-19 deaths for that group is:<br>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than population percentage for disparity index &gt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to the population percentage for -0.2 &lt;disparity index &lt; 0.2</div>
-                               <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than population percentage for disparity index &lt; -0.2</div>
-                               <i>Darker shades indicate greater disparity.</i><br><br>
-                               
-                               <strong>Group COVID-19 Death Percentage</strong> = number of COVID-19 deaths for group/total COVID-19 deaths<br>
-                               <strong>Population Percentage</strong> = number of residents from that group/ total number of residents<br>
-                               <strong>Death Rate Disparity Index</strong> = log(Group COVID-19 Death Percentage/Population Percentage)
-                               <br>
-                        </div>"
-                   ),
-                   HTML(paste0("<div>
-                               <br><br>
-                               <strong>Date: </strong>",update_date,"<br><br>
-                               <b>DATA SOURCE:</b> <a href='https://bit.ly/3bJ77GZ'>ct.gov</a><br>
-                               </div>")))
-               )
-      )
-      )),
       navbarMenu(menuName = "mediation_menu",
                  #HTML("<div style='font-size:90%;line-height:1.3;'><b>MEDIATION</b><br>Select a USA mediation</div>"),
                  HTML("<div><b>MEDIATION</b></div>"),
@@ -620,119 +805,68 @@ ui <-
                )
       )),
       navbarMenu(menuName ="determinant_menu",
-                 #HTML("<div style='font-size:90%;line-height:1.3;'><b>DETERMINANT</b><br>Select a USA determinant</div>"),
                  HTML("<div><b>DETERMINANT</b></div>"),
                tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                      HTML("<div><b>DETERMINANT (USA)</b></br>Diabetes</div>")),
-               value="determinant_usa_diabetes",
+                     HTML("<div><b>DETERMINANT</b></br>USA</div>")),
+               value="determinant_usa",
                fluidPage(
-                 fluidRow(class="page_title", tags$h1("DETERMINANT: Nationwide Diabetes Disparities")),
-                 fluidRow(class="page_title", tags$h2("What are the disparities between states in rate of diabetes patients 
-                                per 100k population per state when compared to the average United States rate?")),
+                 fluidRow(class="page_title", uiOutput("us_det_title")),
+                 fluidRow(class="page_title", uiOutput("us_det_subtitle")),
                  fluidRow(class = "map-container",
-                 column(8,id = "mainpanel_us_db",
-                       tags$h3(class="map-title", "US Diabetes Rate Disparities by State Compared to Average US Rate"),
-                       leafletOutput(outputId = "map.diabetes", height=height)),
+                column(8, id = "mainpanel_us_db",
+                       tags$h3(class="map-title", textOutput("us_det_map_title")),
+                       tags$br(),tags$br(),
+                       tags$div(class = "select-bar",
+                                selectInput(inputId = "determinant",
+                                            label = NULL,
+                                            choices = c("Diabetes", "Obesity", "CRD Mortality", "Heart Disease Mortality"),
+                                            selected = "Diabetes"
+                                )),
+                       leafletOutput(outputId = "map.determinant", height=height)),
                  column(4,
                    id = "sidebar_us_db",
-                   #HTML(whatisit_text),
-                   HTML("<div>
-                                Diabetes puts patients at increased risk of contracting and dying from COVID-19, 
-                                so areas with higher diabetes rates may face increased COVID-19 burdens. <br><br>
-                               The  rate of diabetes deaths per 100k in a state is<br>
+                               uiOutput("sb_us_det_output"),
+                               HTML(
+                               "<div>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
                                <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
-                               <i>Darker shades indicate greater disparity.</i><br><br>
-                               
-                               <strong>Diabetes Rate</strong> = number of diabetic patients per 100K population <br>
-                               <strong>Diabetes Disparity Index</strong> = log(Diabetes Rate in state/average Diabetes Rate in US)<br>
-                               <strong>Date: </strong> 2020<br><br>
-                               
-                               <b>DATA SOURCE:</b> <a href='https://bit.ly/34mYLBP'>County Health Rankings</a> and 
-                                  <a href='https://bit.ly/2V1Zl3I'>CDC</a><br>
-                          </div>")),
-                 )
+                               <i>Darker shades indicate greater disparity.</i><br><br></div>"),
+                               uiOutput("sb_us_det_footer")))
                )
       ),
-      
-      # tabPanel(tags$div(class="tab-title",style="text-align:center;",
-      #                   HTML("<div style='font-size:80%;line-height:1.3;'><b>DETERMINANT (USA)</b></br>Heart Disease</div>")),
-      #          sidebarLayout(
-      #            sidebarPanel(
-      #              id = "sidebar_us_cardio",
-      #              HTML(whatisit_text),
-      #              HTML("<div style='font-weight:bold;line-height:1.3;'>
-      #               Determinant: What are the disparities between states in rate of deaths (black non-hispanic) due to heart disease 
-      #                           per 100k population per state when compared to the average United States rate? </div><br>
-      #                           <div style='font-size:90%;line-height:1.2;'>
-      #                           Heart disease patients at increased risk of contracting and dying from COVID-19, 
-      #                           so areas with a history of higher heart disease mortality may face increased COVID-19 burdens. 
-      #                           Furthermore, some ethnic groups have higher mortality rates due to heart disease than other groups. <br><br>
-      #                          The rate of deaths due to heart disease (black non-hispanic) per 100k in a state is<br>
-      #                          <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
-      #                          <div>&nbsp;&nbsp;&nbsp;<span style='background: #ffffff; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt;disparity index &lt; 0.2</div>
-      #                          <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
-      #                          <i>Darker shades indicate greater disparity.</i><br><br>
-      #                          
-      #                          <strong>Heart Disease Death Rate (BNH)</strong> = number of heart disease deaths (black non-hispanic) per 100K population <br>
-      #                          <strong>Heart Disease Death Disparity Index (BNH)</strong> = log(Heart Disease Death Rate (BNH) in state/average Heart Disease Death Rate in US)<br>
-      #                          <strong>Date: </strong> 2015<br><br>
-      #                          
-      #                          <b>DATA SOURCE:</b> <a href='https://sortablestats.cdc.gov/#/indicator'>CDC</a><br>
-      #                     </div>"),
-      #              HTML(footer_text),
-      #              width=4),
-      #            
-      #            mainPanel(id = "mainpanel_us_cardio",
-      #                      tags$h4(class="map-title", "US Heart Disease Death Rate Disparities (Black Non-Hispanic) by State Compared to Average US Rate"),
-      #                      leafletOutput(outputId = "map.cardio.bnh", height="100%"), width=8)
-      #          )
-      # ),
-      
       tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>DETERMINANT (NY)</b></br>Diabetes</div>")),
-               value="determinant_ny_diabetes",
+                        HTML("<div><b>DETERMINANT</b></br>NY</div>")),
+               value="determinant_ny",
                fluidPage(
-                 fluidRow(class="page_title", tags$h1("DETERMINANT: New York Diabetes Disparities")),
-                 fluidRow(class="page_title", tags$h2("What are the disparities between New York counties in the rate 
-                                of diabetes patients per 100k population when compared to the average United 
-                                States rate?")),
+                 fluidRow(class="page_title", uiOutput("ny_det_title")),
+                 fluidRow(class="page_title", uiOutput("ny_det_subtitle")),
                  fluidRow(class = "map-container",
                  column(8, id = "mainpanel_ny_det",
-                   tags$h3(class="map-title", "COVID-19 Diabetes Rate Disparities by County in New York Compared to Average US Rate"),
-                   leafletOutput(outputId = "map.NY.diabetes", height=height)),
+                   tags$h3(class="map-title", textOutput("ny_det_map_title")),
+                   tags$br(),tags$br(),
+                   tags$div(class = "select-bar",
+                            selectInput(inputId = "determinant_NY",
+                                        label = NULL,
+                                        choices = c("Diabetes", "Obesity"), # , "Obesity", "Heart Disease"
+                                        selected = "Diabetes"
+                            )),
+                   leafletOutput(outputId = "map.NY.determinant", height=height)),
                  column(4,
                    id = "sidebar_ny_det",
-                   #HTML(whatisit_text),
+                   uiOutput("sb_ny_det_output"),
                    HTML("
                         <div>
-                        Diabetes puts patients at increased risk of contracting and dying from COVID-19, 
-                        so areas with higher diabetes rates may face increased COVID-19 burdens. <br><br>
-                       The  rate of diabetes patients per 100k in a county  is<br>
                        <div>&nbsp;&nbsp;&nbsp;<span style='background: #BD0026; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Higher</strong> than US avg. rate for disparity index &gt; 0.2</div>
                        <div>&nbsp;&nbsp;&nbsp;<span style='background: #f7f7f7; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> About equal</strong> to US avg. rate for -0.2 &lt; disparity index &lt; 0.2</div>
                        <div>&nbsp;&nbsp;&nbsp;<span style='background: #253494; border-radius: 50%; font-size: 11px; opacity: 0.7;'>&nbsp&nbsp&nbsp&nbsp</span><strong> Lower</strong> than US avg. rate for disparity index &lt; -0.2</div>
                        <i>Darker shades indicate greater disparity.</i><br><br>
-                       
-                       <strong>Diabetes Rate</strong> = number of diabetic patients  per 100K population <br>
-                       <strong>Diabetes Disparity Index</strong> = log(Diabetes Rate in state/average Diabetes Rate in US)<br>
-                       <strong>Date: </strong> 2020<br><br>
-                       
-                       <b>DATA SOURCE:</b> <a href='https://bit.ly/34mYLBP'>County Health Rankings</a> and 
-                          <a href='https://bit.ly/2V1Zl3I'>CDC</a><br>
-
-                       </div>"))
-                 
-                 )
+                       </div>"),
+                   uiOutput("sb_ny_det_footer")))
                )
       )
       ),
-      navbarMenu(menuName ="about_menu",
-                 #HTML("<div style='font-size:90%;line-height:1.3;'><b>ABOUT</b><br>Project Information</div>"),
-                 HTML("<div><b>ABOUT</b></div>"),
-                 tabPanel(tags$div(class="tab-title",style="text-align:center;",
-                        HTML("<div><b>About</b></div>")),
+      tabPanel(HTML("<div><b>ABOUT</b></div>"),
                value="about",
                fluidRow(
                  column(8,offset=2,class="about",
@@ -740,7 +874,6 @@ ui <-
                         HTML(footer_text))
                )
                )
-      )
     ), 
     # Footer
     fluidRow(
@@ -756,8 +889,14 @@ ui <-
     )
     #,tags$script(src = "style.js")
   )
+
 #### Server Code ####
 server <- function(input, output, session) {
+  # Leaflet plot colors
+  colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
+  bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
+  
+  # Join NY shape and data, may move to processing 
   
   # Render leaflet plot with all information in hover
   output$map.testing <- renderLeaflet({
@@ -771,8 +910,7 @@ server <- function(input, output, session) {
     
     states <- data.frame(states, "tests_ldi"=unlist(tests_ldi)) # Append to states
     
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
+    
     pal2 <- leaflet::colorBin(colors, domain = states$tests_ldi, bins = bins, reverse=TRUE)
 #    browser()
     labels2 <- sprintf(
@@ -819,106 +957,210 @@ server <- function(input, output, session) {
         id = "mapbox.light"))
   })
   
-  output$map.diabetes <- renderLeaflet({
-    
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
-    pal2 <- leaflet::colorBin(colors, domain = states$diabetes_rate_ldi, bins = bins, reverse=FALSE)
-    labels2 <- sprintf(
-      "<strong>%s</strong><br/>
-      Diabetes Rate DI: %.2g<br/>
-      Diabetes Rate: %.1f per 100k",
-      states$NAME, states$diabetes_rate_ldi, states$pct_Adults_with_Diabetes*1000
-    ) %>% lapply(htmltools::HTML)
-    
-    leaflet(states.shapes) %>%
-      setView(-96, 37.8, 4) %>% 
-      addPolygons(
-        fillColor = ~pal2(states$diabetes_rate_ldi),
-        weight = 1,
-        opacity = 1,
-        color = "#330000",
-        dashArray = "1",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = labels2,
-        labelOptions = labelOptions(
-          style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto")) %>% 
-      addLegend(pal = pal2, 
-                values = ~states$diabetes_rate_ldi, 
-                opacity = 0.7, title = "Disparity Index<br/>US Diabetes Rate",
-                position = "bottomright",
-                labFormat = function(type, cuts, p) { n = length(cuts) 
-                cuts[n] = paste0(cuts[n]," lower") 
-                # for (i in c(1,seq(3,(n-1)))){cuts[i] = paste0(cuts[i],"—")} 
-                for (i in c(1,seq(2,(n-1)))){cuts[i] = paste0(cuts[i]," — ")} 
-                cuts[2] = paste0(cuts[2]," higher") 
-                paste0(str_remove(cuts[-n],"higher"), str_remove(cuts[-1],"—"))
-                }) %>%
-      addProviderTiles("MapBox", options = providerTileOptions(
-        id = "mapbox.light"))
-    #Remove personal API key
-  })
-
-  output$map.cardio.bnh <- renderLeaflet({
-    
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
-    pal2 <- leaflet::colorBin(colors, domain = states$cardio_death_rate_BNH_ldi, bins = bins, reverse=FALSE)
-    labels2 <- sprintf(
-      "<strong>%s</strong><br/>
-      Heart Disease Death Rate DI (BNH): %.2g<br/>
-      Heart Disease Death Rate (BNH): %.1f per 100k",
-      states$NAME, states$cardio_death_rate_BNH_ldi, states$cardio_deaths_p_Black_Non_Hispanic
-    ) %>% lapply(htmltools::HTML)
-    
-    leaflet(states.shapes) %>%
-      setView(-96, 37.8, 4) %>% 
-      addPolygons(
-        fillColor = ~pal2(states$cardio_death_rate_BNH_ldi),
-        weight = 1,
-        opacity = 1,
-        color = "#330000",
-        dashArray = "1",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = labels2,
-        labelOptions = labelOptions(
-          style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto")) %>% 
-      addLegend(pal = pal2, 
-                values = ~states$cardio_death_rate_BNH_ldi, 
-                opacity = 0.7, title = "Disparity Index<br/>US Heart Disease Death Rate (BNH)",
-                position = "bottomright",
-                labFormat = function(type, cuts, p) { n = length(cuts) 
-                cuts[n] = paste0(cuts[n]," lower") 
-                # for (i in c(1,seq(3,(n-1)))){cuts[i] = paste0(cuts[i],"—")} 
-                for (i in c(1,seq(2,(n-1)))){cuts[i] = paste0(cuts[i]," — ")} 
-                cuts[2] = paste0(cuts[2]," higher") 
-                paste0(str_remove(cuts[-n],"higher"), str_remove(cuts[-1],"—"))
-                }) %>%
-      addProviderTiles("MapBox", options = providerTileOptions(
-        id = "mapbox.light"))
-    #Remove personal API key
+  output$map.determinant <- renderLeaflet({
+    det <- input$determinant
+    geo.plot("US", det)
   })
   
+  output$us_det_map_title <- renderText ({
+    select.det <- input$determinant
+    if (select.det == "CRD Mortality") {
+      select.det <- "Cronic Respiratory Disease (CRD) Mortality"
+    }
+    paste0("US ",select.det," Rate Disparities by State Compared to Average US Rate")
+  })
+  
+  output$ny_det_map_title <- renderText ({
+    select.det <- input$determinant_NY
+    paste0("NY ",select.det," Rate Disparities by County Compared to Average US Rate")
+  })
+  
+  output$state_mort_heading <- renderUI({
+    state <- input$state_mort
+    name <- state.abr[state.abr$abr==state,"name"]
+    tagList(
+    tags$h1(paste0("OUTCOME: ",name," rates of COVID-19 Mortality")),
+    tags$h2(paste0("What are the disparities between counties of ",name," in rates of COVID-19 deaths 
+                   per 100k population when compared to the average USA rate?"))
+    )
+  })
+  output$state_mort_map_title <- renderUI({
+    state <- input$state_mort
+    name <- state.abr[state.abr$abr==state,"name"]
+    tags$h3(class="map-title", paste0("COVID-19 Mortality Rate Disparities by County in ",name," 
+                                      Compared to Average US Rate"))
+  })
+  
+  output$state_case_heading <- renderUI({
+    state <- input$state_case
+    name <- state.abr[state.abr$abr==state,"name"]
+    tagList(
+      tags$h1(paste0("OUTCOME: ",name," rates of COVID-19 Cases")),
+      tags$h2(paste0("What are the disparities between counties of ",name," in rates of COVID-19 cases 
+                   per 100k population when compared to the average USA rate?"))
+    )
+  })
+  output$state_case_map_title <- renderUI({
+    state <- input$state_case
+    name <- state.abr[state.abr$abr==state,"name"]
+    tags$h3(class="map-title", paste0("COVID-19 Case Rate Disparities by County in ",name," 
+                                      Compared to Average US Rate"))
+  })
+  
+  output$us_det_title <- renderUI ({
+    select.det <- input$determinant
+    tags$h1(paste0("DETERMINANT: Nationwide ",select.det," Disparities"))
+  })
+  
+  output$ny_det_title <- renderUI ({
+    select.det <- input$determinant_NY
+    tags$h1(paste0("DETERMINANT: New York ",select.det," Disparities"))
+  })
+  
+  output$us_det_subtitle <- renderUI ({
+    select.det <- input$determinant
+    if ( select.det == "Diabetes") {
+      tags$h2("What are the disparities between states in rate of diabetes patients 
+              per 100k population per state when compared to the average United States rate?")
+    }
+    else if ( select.det == "Obesity") {
+      tags$h2("What are the disparities between states in percent of obese patients 
+              per state when compared to the average United States rate?")
+    }
+    else if ( select.det == "Heart Disease") {
+      tags$h2("What are the disparities between states in rate of deaths (black non-hispanic) due to heart disease
+               per 100k population per state when compared to the average United States rate?")
+    }
+  })
+  
+  output$ny_det_subtitle <- renderUI ({
+    select.det <- input$determinant_NY
+    if ( select.det == "Diabetes") {
+      tags$h2("What are the disparities between New York counties in the rate 
+                                of diabetes patients per 100k population when compared to the average United 
+                                States rate?")
+    }
+    else if ( select.det == "Obesity") {
+      tags$h2("What are the disparities between New York counties in the rate 
+                                of people with Obesitys per 100k population when compared to the average United 
+                                States rate?")
+    }
+    else if ( select.det == "Heart Disease") {
+      
+    }
+  })
+  
+  output$sb_us_det_output <- renderUI ({
+    select.det <- input$determinant
+    if ( select.det == "Diabetes") {
+      tagList(
+        tags$p("Diabetes puts patients at increased risk of contracting and dying from COVID-19, 
+      so areas with higher diabetes rates may face increased COVID-19 burdens."),
+        tags$p("The  rate of diabetes deaths per 100k in a state is:")
+      )
+    }
+    else if ( select.det == "Obesity") {
+      tagList(
+        tags$p("Obesity puts patients at increased risk of contracting and dying from COVID-19, so areas with higher rates of obesity may face increased COVID-19 burdens."),
+        tags$p("The  rate of obesity in a state is:")
+      )
+    }
+    else if ( select.det == "Heart Disease") {
+      tagList(
+        tags$p("Heart disease patients at increased risk of contracting and dying from COVID-19,
+                                 so areas with a history of higher heart disease mortality may face increased COVID-19 burdens.
+                                 Furthermore, some ethnic groups have higher mortality rates due to heart disease than other groups."),
+        tags$p("The rate of deaths due to heart disease (black non-hispanic) per 100k in a state is:")
+      )
+    }
+  })
+  
+  output$sb_ny_det_output <- renderUI ({
+    select.det <- input$determinant_NY
+    if ( select.det == "Diabetes") {
+      tagList(
+        tags$p("Diabetes puts patients at increased risk of contracting and dying from COVID-19, 
+                so areas with higher diabetes rates may face increased COVID-19 burdens."),
+        tags$p("The rate of diabetes patients per 100k in a county is:")
+      )
+    }
+    else if ( select.det == "Obesity") {
+      tagList(
+        tags$p("Obesity puts patients at increased risk of contracting and dying from COVID-19, so areas with higher rates of obesity may face increased COVID-19 burdens."),
+        tags$p("The  rate of obesity in a county is:")
+      )
+    }
+    else if ( select.det == "Heart Disease") {
+      #tagList(
+      #  tags$p("Heart disease patients at increased risk of contracting and dying from COVID-19,
+      #                           so areas with a history of higher heart disease mortality may face increased COVID-19 burdens.
+      #                           Furthermore, some ethnic groups have higher mortality rates due to heart disease than other groups."),
+      #  tags$p("The rate of deaths due to heart disease (black non-hispanic) per 100k in a state is:")
+      #)
+    }
+  })
+  
+  output$sb_us_det_footer <- renderUI ({
+    select.det <- input$determinant
+    if ( select.det == "Diabetes") {
+      tagList(
+        tags$div(HTML(paste0(
+          "<strong>Diabetes Rate</strong> = number of diabetic patients per 100K population <br>
+          <strong>Diabetes Disparity Index</strong> = log(Diabetes Rate in state/average Diabetes Rate in US)<br>
+          <strong>Date: </strong>","2020"," <br><br>
+          <b>DATA SOURCE:</b> <a href='https://bit.ly/34mYLBP'>County Health Rankings</a> and 
+          <a href='https://bit.ly/2V1Zl3I'>CDC</a><br>")))
+      )
+    }
+    else if ( select.det == "Obesity") {
+      tagList(
+        tags$div(HTML(paste0(
+          "<strong>Obesity Rate</strong> = number of obese patients per 100K population <br>
+                                <strong>Obesity Disparity Index</strong> = log(Obesity Rate in state/average Obesity Rate in US)<br>
+                                <strong>Date: </strong>","2016","<br><br>
+                                
+                                <b>DATA SOURCE:</b> <a href='https://stateofchildhoodobesity.org/adult-obesity/'>State of Childhood Obesity</a>"
+        )))
+      )
+    }
+    else if ( select.det == "Heart Disease") {
+      tags$div(HTML(
+        "<strong>Heart Disease Death Rate (BNH)</strong> = number of heart disease deaths (black non-hispanic) per 100K population <br>
+                                <strong>Heart Disease Death Disparity Index (BNH)</strong> = log(Heart Disease Death Rate (BNH) in state/average Heart Disease Death Rate in US)<br>
+                                <strong>Date: </strong> 2015<br><br>
+       
+                                <b>DATA SOURCE:</b> <a href='https://sortablestats.cdc.gov/#/indicator'>CDC</a><br>"
+      ))
+    }
+  })
+  output$sb_ny_det_footer <- renderUI ({
+    select.det <- input$determinant_NY
+    if ( select.det == "Diabetes") {
+      tagList(
+        tags$div(HTML(paste0(
+          "  <strong>Diabetes Rate</strong> = number of diabetic patients  per 100K population <br>
+             <strong>Diabetes Disparity Index</strong> = log(Diabetes Rate in state/average Diabetes Rate in US)<br>
+             <strong>Date: </strong> 2020<br><br>
+             <b>DATA SOURCE:</b> <a href='https://bit.ly/34mYLBP'>County Health Rankings</a> and 
+             <a href='https://bit.ly/2V1Zl3I'>CDC</a><br>")))
+      )
+    }
+    else if ( select.det == "Obesity") {
+      tagList(
+        tags$div(HTML(paste0(
+          "  <strong>Obesity Rate</strong> = number of self reported Obese people per 100K population <br>
+             <strong>Obesity Disparity Index</strong> = log(Obesity Rate in state/average Obesity Rate in US)<br>
+             <strong>Date: </strong> 2016<br><br>
+             <b>DATA SOURCE:</b> <a href='https://bit.ly/34mYLBP'>County Health Rankings</a> and 
+             <a href='https://bit.ly/2V1Zl3I'>CDC</a><br>")))
+      )
+    }
+    else if ( select.det == "Heart Disease") {
+    }
+  })
+
   output$map.hospital <- renderLeaflet({
     
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     pal2 <- leaflet::colorBin(colors, domain = states$hosp_beds_ldi, bins = bins, reverse=TRUE)
     labels2 <- sprintf(
       "<strong>%s</strong><br/>
@@ -966,8 +1208,6 @@ server <- function(input, output, session) {
   
   output$map.covid_deaths <- renderLeaflet({
     
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     pal2 <- leaflet::colorBin(colors, domain = states$death_rate_ldi, bins = bins, reverse=FALSE)
     
     labels2 <- sprintf(
@@ -1040,8 +1280,6 @@ server <- function(input, output, session) {
     states <- data.frame(states, "race_deaths_pct"=unlist(race_deaths_pct)) # Append to states
     states <- data.frame(states, "race_wd_pop_pct"=unlist(race_wd_pop_pct)) # Append to states
 
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     pal2 <- leaflet::colorBin(colors, domain = states$death_rate_ldi_race, bins = bins, reverse=FALSE)
     
     labels2 <- sprintf(
@@ -1096,169 +1334,23 @@ server <- function(input, output, session) {
   })
   
   output$map.NY.deaths <- renderLeaflet({
-    
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
-    
-    pal2 <- leaflet::colorBin(colors, domain = NY.data$death_rate_ldi, bins = bins, reverse=FALSE)
-    
-    NY.shape$county_fips <- paste(as.data.frame(NY.shape)$STATEFP, as.data.frame(NY.shape)$COUNTYFP, sep = '')
-    NY.data <- dplyr::left_join(as.data.frame(NY.shape), as.data.frame(NY.data), by = c("county_fips" = "FIPS"))
-    
-    labels <- sprintf(
-      "<strong>%s</strong><br/>
-      COVID-19 Mortality Rate DI: %.2g<br>
-      COVID-19 Mortality Rate: %.1f /100k",
-      NY.data$County, NY.data$death_rate_ldi, (NY.data$deaths/NY.data$Population)*100000
-    ) %>% lapply(htmltools::HTML)
-    
-    leaflet(NY.shape) %>%
-      setView(-76.071782, 42.991989, 6) %>%  # Set to the geographic center of NY
-      addPolygons(
-        fillColor = ~pal2(NY.data$death_rate_ldi),
-        weight = 1,
-        opacity = 1,
-        color = "#330000",
-        dashArray = "1",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = labels,
-        labelOptions = labelOptions(
-          style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto")) %>% 
-      addLegend(pal = pal2, 
-                values = ~NY.data$death_rate_ldi, 
-                opacity = 0.7, 
-                title = "Disparity Index<br/>NY COVID-19 Mortality Rates",
-                position = "bottomright",
-                labFormat = function(type, cuts, p) { n = length(cuts) 
-                cuts[n] = paste0(cuts[n]," lower") 
-                # for (i in c(1,seq(3,(n-1)))){cuts[i] = paste0(cuts[i],"—")} 
-                for (i in c(1,seq(2,(n-1)))){cuts[i] = paste0(cuts[i]," — ")} 
-                cuts[2] = paste0(cuts[2]," higher") 
-                paste0(str_remove(cuts[-n],"higher"), str_remove(cuts[-1],"—"))
-                }
-      ) %>%
-      addProviderTiles("MapBox", options = providerTileOptions(
-        id = "mapbox.light"))
-    #Remove personal API key
+    selected_state <- input$state_mort
+    selected_feature <- "Mortality"
+    geo.plot(selected_state, selected_feature)
   })
   
   output$map.NY.cases <- renderLeaflet({
-    
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
-    pal2 <- leaflet::colorBin(colors, domain = NY.data$case_rate_ldi, bins = bins, reverse=FALSE)
-    
-    NY.shape$county_fips <- paste(as.data.frame(NY.shape)$STATEFP, as.data.frame(NY.shape)$COUNTYFP, sep = '')
-    NY.data <- dplyr::left_join(as.data.frame(NY.shape), as.data.frame(NY.data), by = c("county_fips" = "FIPS"))
-    
-    labels <- sprintf(
-      "<strong>%s</strong><br/>
-      COVID-19 Case Rate DI: %.2g<br>
-      COVID-19 Case Rate: %.1f /100k",
-#      NY.data$County, NY.data$case_rate_ldi, (NY.data$cases/NY.data$Population)*100000
-      NY.data$County, NY.data$case_rate_ldi, NY.data$case_rate*100000
-    ) %>% lapply(htmltools::HTML)
-    
-    leaflet(NY.shape) %>%
-      setView(-76.071782, 42.991989, 6) %>%  # Set to the geographic center of NY
-      addPolygons(
-        fillColor = ~pal2(NY.data$case_rate_ldi),
-        weight = 1,
-        opacity = 1,
-        color = "#330000",
-        dashArray = "1",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = labels,
-        labelOptions = labelOptions(
-          style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto")) %>% 
-      addLegend(pal = pal2, 
-                values = ~NY.data$case_rate_ldi, 
-                opacity = 0.7, 
-                title = "Disparity Index<br/>NY COVID-19 Cases",
-                position = "bottomright",
-                labFormat = function(type, cuts, p) { n = length(cuts) 
-                cuts[n] = paste0(cuts[n]," lower") 
-                # for (i in c(1,seq(3,(n-1)))){cuts[i] = paste0(cuts[i],"—")} 
-                for (i in c(1,seq(2,(n-1)))){cuts[i] = paste0(cuts[i]," — ")} 
-                cuts[2] = paste0(cuts[2]," higher") 
-                paste0(str_remove(cuts[-n],"higher"), str_remove(cuts[-1],"—"))
-                }
-      ) %>%
-      addProviderTiles("MapBox", options = providerTileOptions(
-        id = "mapbox.light"))
-    #Remove personal API key
+    selected_state <- input$state_case
+    selected_feature <- "Case"
+    geo.plot(selected_state, selected_feature)
   })
   
-  output$map.NY.diabetes <- renderLeaflet({
-    
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
-    pal2 <- leaflet::colorBin(colors, domain = NY.data$diabetes_ldi, bins = bins, reverse=FALSE)
-    
-    NY.shape$county_fips <- paste(as.data.frame(NY.shape)$STATEFP, as.data.frame(NY.shape)$COUNTYFP, sep = '')
-    NY.data <- dplyr::left_join(as.data.frame(NY.shape), as.data.frame(NY.data), by = c("county_fips" = "FIPS"))
-    
-    labels <- sprintf(
-      "<strong>%s</strong><br/>
-      Diabetes Rate DI: %.2g<br>
-      Diabetes Rate: %.1f per 100k",
-      NY.data$County, NY.data$diabetes_ldi, NY.data$pct_Adults_with_Diabetes*1000
-    ) %>% lapply(htmltools::HTML)
-    
-    leaflet(NY.shape) %>%
-      setView(-76.071782, 42.991989, 6) %>%  # Set to the geographic center of NY
-      addPolygons(
-        fillColor = ~pal2(NY.data$diabetes_ldi),
-        weight = 1,
-        opacity = 1,
-        color = "#330000",
-        dashArray = "1",
-        fillOpacity = 0.7,
-        highlight = highlightOptions(
-          weight = 5,
-          color = "#666",
-          dashArray = "",
-          fillOpacity = 0.7,
-          bringToFront = TRUE),
-        label = labels,
-        labelOptions = labelOptions(
-          style = list("font-weight" = "normal", padding = "3px 8px"),
-          textsize = "15px",
-          direction = "auto")) %>% 
-      addLegend(pal = pal2, 
-                values = ~NY.data$diabetes_ldi, 
-                opacity = 0.7, 
-                title = "Disparity Index<br/>NY Diabetes Rates",
-                position = "bottomright",
-                labFormat = function(type, cuts, p) { n = length(cuts) 
-                cuts[n] = paste0(cuts[n]," lower") 
-                # for (i in c(1,seq(3,(n-1)))){cuts[i] = paste0(cuts[i],"—")} 
-                for (i in c(1,seq(2,(n-1)))){cuts[i] = paste0(cuts[i]," — ")} 
-                cuts[2] = paste0(cuts[2]," higher") 
-                paste0(str_remove(cuts[-n],"higher"), str_remove(cuts[-1],"—"))
-                }
-      ) %>%
-      addProviderTiles("MapBox", options = providerTileOptions(
-        id = "mapbox.light"))
-    #Remove personal API key
+  output$map.NY.determinant <- renderLeaflet({
+    selected_state <- "NY"
+    selected_feature <- input$determinant_NY
+    geo.plot(selected_state, selected_feature)
   })
-  
+
   # This sets the range for zooming the following plot
   ranges <- reactiveValues(x = NULL, y = NULL)
   
@@ -1267,14 +1359,14 @@ server <- function(input, output, session) {
     selected.region <- input$NYRegion3
     select.rate <- input$rate.ma
     select.date <- input$NYDate.ma
-    range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
+    #range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
     
     #width <- input$width
-    select.size <- 2
+    select.size <- 3
     
     if (selected.region == "All Regions") {
       selected.region <- sort(unique(covid_NY_TS_plot.cases$Region))
-      select.size <- 1
+      select.size <- 1.5
     }
     
     if (select.rate=="Overall") {
@@ -1296,30 +1388,24 @@ server <- function(input, output, session) {
       gg_title <- paste0("New York State New COVID-19 Case Trends per 100k (",moving.avg.window," day Average)")
     }
     
-    #if (width > 844) {
-    if (TRUE) {
-      tick.legend <- NULL
-    }
-    else {
-      tick.legend <- theme(legend.position = "none")
-    }
+    region.num <- unique(covid_NY_TS_plot.ma$Region) %>% as.data.frame()
+    colnames(region.num) <- c("Region")
+    region.num <- region.num %>%
+      mutate(num = row_number()) %>%
+      mutate(Region = as.character(Region))
     
+    n_region <- nrow(region.num)
     
     highlight_points <- covid_NY_TS_plot.ma %>%
-      dplyr::filter( 
-          Region == "Adirondack" & date == select.date[1] + ((1*((range%/%11)+1)) %% range) |
-            Region == "Capital District" & date == select.date[1] + ((2*((range%/%11)+1)) %% range) |
-            Region == "Catskill" & date == select.date[1] + ((3*((range%/%11)+1)) %% range) |
-            Region == "Central New York" & date == select.date[1] + ((4*((range%/%11)+1)) %% range) |
-            Region == "Chautauqua-Alleghany" & date == select.date[1] + ((5*((range%/%11)+1)) %% range) |
-            Region == "Eastern Hudson Valley" & date == select.date[1] + ((6*((range%/%11)+1)) %% range) |
-            Region == "Finger Lakes" & date == select.date[1] + ((7*((range%/%11)+1)) %% range) |
-            Region == "Long Island" & date == select.date[1] + ((8*((range%/%11)+1)) %% range) |
-            Region == "New York City" & date == select.date[1] + ((9*((range%/%11)+1)) %% range) |
-            Region == "New York State" & date == select.date[1] + ((10*((range%/%11)+1)) %% range) |
-            Region == "Niagara Frontier" & date == select.date[1] + ((11*((range%/%11)+1)) %% range) |
-            Region == "Thousand Island" & date == select.date[1] + ((12*((range%/%11)+1)) %% range)
-      )
+      ungroup() %>%
+      filter(date >= select.date[1] & date <= select.date[2]) %>%
+      left_join(region.num, by=c("Region" = "Region")) %>%
+      group_by(Region) %>%
+      mutate(range = as.numeric(as.Date(max(date))) - as.numeric(as.Date(min(date))))  %>% 
+      mutate(max_date = as.Date(max(date))) %>%
+      mutate(max_date = max_date - ((num*((range%/%n_region) + 1))%%range))  %>%
+      filter(as.Date(date) == max_date) %>%
+      top_n(1, wt=date)
     
     NY_region_palette.df <- NY_counties_regions %>%
       dplyr::select(Region,Color) %>% 
@@ -1344,131 +1430,197 @@ server <- function(input, output, session) {
       ylab(y_lab) + 
       xlab("Date") +
       ggtitle(gg_title)  +  
+      theme(legend.key.size = unit(1.5, "lines")) + 
       gghighlight(Region %in% selected.region, use_direct_label=FALSE) +
       geom_line(size=select.size) + 
-      geom_label_repel(data=highlight_points,  aes(label=Region), box.padding = unit(1.75, 'lines')) +
+      geom_label_repel(
+        data=highlight_points,  
+        aes(label=Region,fill=Region), 
+        box.padding = unit(1.75, 'lines'),
+        color = "black",
+        segment.color = "black",
+        size = 5,
+        show.legend = FALSE
+        ) +
+      scale_color_manual(values=NY_region_palette, aesthetics = c("fill", "box.padding")) +
       coord_cartesian(xlim = ranges$x, ylim = ranges$y, expand = FALSE) +
       geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
+      geom_vline(aes(xintercept=as_datetime("2020-05-15"), linetype="Gov. Cuomo issues Phase 1 Reopening (5 Regions)"), color = "blue") + 
       scale_linetype_manual(name = "Events", 
-                            values = c(2), 
-                            guide = guide_legend(override.aes = list(color = c("black")))) +
-      tick.legend +
+                            values = c(2,2), 
+                            guide = guide_legend(override.aes = list(color = c("blue","black")))) +
       NULL
     
   })
   
+  output$NY.deaths.ma <- renderPlot({
+    # browser()
+    selected.region <- input$NYRegion
+    #selected.county <- input$NYCounty
+    select.rate <- input$rate.DoT
+    select.date <- input$NYDoTDate
+    #range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
+    
+    #width <- input$width
+    select.size <- 3
+    
+    if (selected.region == "All Regions") {
+      selected.region <- sort(unique(covid_NY_TS_plot.deaths$Region))
+      select.size <- 1.5
+    }
+    
+    if (select.rate=="Overall") {
+      covid_NY_TS_plot.ma <- covid_NY_TS_plot.deaths %>%
+        group_by(Region, date) %>%
+        summarise(diff = sum(diff)) %>%
+        mutate(ma = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+        filter(ma > 0)
+      y_lab <- paste0("New Deaths (",moving.avg.window," day Average)")
+      gg_title <- paste0("New York State New COVID-19 Death Trends (",moving.avg.window," day Average)")
+      scale_y <- scale_y_continuous(
+          trans = "log10",
+          breaks = c(10,25,100,250,500,1000,2500,5000,10000)
+        )
+    }
+    else {
+      covid_NY_TS_plot.ma <- covid_NY_TS_plot.deaths %>%
+        group_by(Region, date) %>%
+        summarise(p_diff = sum(p_diff)) %>%
+        mutate(ma = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right"))) %>%
+        filter(ma > 0)
+      y_lab <- paste0("New Deaths (",moving.avg.window," day Average) per 100k")
+      gg_title <- paste0("New York State New COVID-19 Death Trends per 100k (",moving.avg.window," day Average)")
+      scale_y <- scale_y_continuous(
+          breaks = c(10,25,100,250,500,1000,2500,5000,10000)
+        )
+    }
+    
+    region.num <- unique(covid_NY_TS_plot.ma$Region) %>% as.data.frame()
+    colnames(region.num) <- c("Region")
+    region.num <- region.num %>%
+      mutate(num = row_number()) %>%
+      mutate(Region = as.character(Region))
+    
+    n_region <- nrow(region.num)
+    
+    highlight_points <- covid_NY_TS_plot.ma %>%
+      ungroup() %>%
+      filter(date >= select.date[1] & date <= select.date[2]) %>%
+      left_join(region.num, by=c("Region" = "Region")) %>%
+      group_by(Region) %>%
+      mutate(range = as.numeric(as.Date(max(date))) - as.numeric(as.Date(min(date))))  %>% 
+      mutate(max_date = as.Date(max(date))) %>%
+      mutate(max_date = max_date - ((num*((range%/%n_region) + 1))%%range))  %>%
+      filter(as.Date(date) == max_date) %>%
+      top_n(1, wt=date)
+    
+    NY_region_palette.df <- NY_counties_regions %>%
+      dplyr::select(Region,Color) %>% 
+      dplyr::distinct(Region,Color)
+    
+    NY_region_palette <- setNames(as.character(NY_region_palette.df$Color), as.character(NY_region_palette.df$Region))
+    
+    
+    
+    covid_NY_TS_plot.ma %>%
+      filter(date >= select.date[1] & date <= select.date[2]) %>%
+      ggplot(aes(date, 
+                 ma, 
+                 color = Region)) +
+      scale_color_manual(values=NY_region_palette) +
+      geom_line(size=1) +
+      scale_y +
+      scale_x_datetime(date_breaks = "1 week", date_minor_breaks = "1 day", date_labels = "%b %d") +
+      ylab(y_lab) + 
+      xlab("Date") +
+      ggtitle(gg_title)  +  
+      theme(legend.key.size = unit(1.5, "lines")) + 
+      gghighlight(Region %in% selected.region, use_direct_label=FALSE) +
+      geom_line(size=select.size) + 
+      geom_label_repel(
+        data=highlight_points,  
+        aes(label=Region,fill=Region), 
+        box.padding = unit(1.75, 'lines'),
+        color = "black",
+        segment.color = "black",
+        size = 5,
+        show.legend = FALSE
+      ) +
+      scale_color_manual(values=NY_region_palette, aesthetics = c("fill", "box.padding")) +
+      coord_cartesian(xlim = ranges$x, ylim = ranges$y, expand = FALSE) +
+      geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
+      geom_vline(aes(xintercept=as_datetime("2020-05-15"), linetype="Gov. Cuomo issues Phase 1 Reopening (5 Regions)"), color = "blue") + 
+      scale_linetype_manual(name = "Events", 
+                            values = c(2,2), 
+                            guide = guide_legend(override.aes = list(color = c("blue","black")))) +
+      NULL
+    
+  })
   
-  output$NY.cases.TS <- renderPlot({
+  output$NY.deaths.TS <- renderPlot({
     # browser()
     #selected.region <- input$NYRegion
     selected.county <- input$NYCounty
-    select.rate <- input$rate.CoT
-    select.date <- input$NYCoTDate
+    select.rate <- input$rate.cDoT
+    select.date <- input$NYcDoTDate
     
-    range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
+    #range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
     #print(range)
     
-    select.size <- 2
-    #if (selected.county != "All Counties") {
-    #  selected.region <- "All Regions"
-    #}
-    if (selected.county == "All Counties") {
-      selected.county <- sort(unique(covid_NY_TS_plot.cases$County))
-      select.size <- 1
-    }
+    NYC <- covid_NY_TS_plot.deaths %>%
+      filter(Region == "New York City") %>%
+      group_by(Region, Color, date) %>%
+      summarise(deaths = sum(deaths),
+                Population = sum(Population),
+                p_deaths = mean(p_deaths),
+                diff = sum(diff),
+                p_diff = mean(p_diff),
+                log_deaths = sum(log_deaths),
+                log_p_deaths = mean(log_p_deaths)) %>%
+      mutate(County = "New York City")
     
-    # if (selected.region == "All Regions") {
-    #   selected.region <- sort(unique(covid_NY_TS_plot.cases$Region))
-    #   if (selected.county == "All Counties") {
-    #     selected.county <- sort(unique(covid_NY_TS_plot.cases$County))
-    #     select.size <- 1
-    #   }
-    # }
-    # else {
-    #   selected.county <- sort(unique(covid_NY_TS_plot.cases$County))
-    # }
+    covid_NY_TS <- covid_NY_TS_plot.deaths %>%
+      filter(Region != "New York City") %>%
+      rbind.data.frame(NYC)
+    
+    select.size <- 3
+    if (selected.county == "All Counties") {
+      selected.county <- sort(unique(covid_NY_TS$County))
+      select.size <- 1.5
+    }
     
     if (select.rate=="Overall") {
-      covid_NY_TS <- covid_NY_TS_plot.cases %>%
-        mutate(y = cases)
-      y_lab <- "Cumulative Number of Cases"
-      title <- "New York State COVID-19 Cases per County (Mar-May 2020)"
+      covid_NY_TS <- covid_NY_TS %>%
+        mutate(y = deaths) %>%
+        filter(y >= 20)
+      y_lab <- "Cumulative Number of Deaths"
+      title <- "New York State COVID-19 Deaths per County (Mar-June 2020)"
     }
     else {
-      covid_NY_TS <- covid_NY_TS_plot.cases %>%
-        mutate(y = p_cases) %>%
-        filter(y >= 10)
-      y_lab <- "Cases per 100K Population"
-      title <- "New York State COVID-19 Cases per 100K Population by County (Mar-May 2020)"
+      covid_NY_TS <- covid_NY_TS %>%
+        mutate(y = p_deaths) %>%
+        filter(y >= 5)
+      y_lab <- "Deaths per 100K Population"
+      title <- "New York State COVID-19 Deaths per 100K Population by County (Mar-June 2020)"
     }
     
-    highlight_points <- covid_NY_TS %>% 
-      dplyr::filter( 
-        County == "Albany" & date == select.date[1] + ((1*((range%/%40)+1)) %% range) |
-          # County == "Allegany" & date == as.Date("2020-03-29") |
-          County == "Bronx" & date == select.date[1] + ((3*((range%/%40)+1)) %% range) |
-          County == "Broome" & date == select.date[1] + ((4*((range%/%40)+1)) %% range) |
-          # County == "Cattaraugus" & date == as.Date("2020-03-30") |
-          County == "Cayuga" & date == select.date[1] + ((6*((range%/%40)+1)) %% range) |
-          County == "Chautauqua" & date ==select.date[1] + ((7*((range%/%40)+1)) %% range) |
-          # County == "Chemung" & date == as.Date("2020-04-10") |
-          County == "Chenango" & date == select.date[1] + ((9*((range%/%40)+1)) %% range) |
-          County == "Clinton" & date == select.date[1] + ((10*((range%/%40)+1)) %% range) |
-          # County == "Columbia" & date == as.Date("2020-03-29") |
-          County == "Cortland" & date == select.date[1] + ((12*((range%/%40)+1)) %% range) |
-          # County == "Delaware" & date == as.Date("2020-04-02") |
-          County == "Dutchess" & date == select.date[1] + ((14*((range%/%40)+1)) %% range)|
-          County == "Erie" & date == select.date[1] + ((15*((range%/%40)+1)) %% range) |
-          # County == "Essex" & date == as.Date("2020-04-10") |
-          # County == "Franklin" & date == as.Date("2020-04-10") |
-          # County == "Fulton" & date == as.Date("2020-04-12") |
-          County == "Genesee" & date == select.date[1] + ((19*((range%/%40)+1)) %% range) |
-          # County == "Greene" & date == as.Date("2020-03-29") |
-          County == "Hamilton" & date == select.date[1] + ((20*((range%/%40)+1)) %% range) |
-          County == "Herkimer" & date == select.date[1] + ((21*((range%/%40)+1)) %% range) |
-          # County == "Jefferson" & date == as.Date("2020-03-30") |
-          County == "Kings" & date ==select.date[1] + ((23*((range%/%40)+1)) %% range) |
-          # County == "Lewis" & date == as.Date("2020-04-10") |
-          # County == "Livingston" & date == as.Date("2020-04-10") |
-          County == "Madison" & date == select.date[1] + ((26*((range%/%40)+1)) %% range) |
-          # County == "Monroe" & date == as.Date("2020-03-26") |
-          # County == "Montgomery" & date == as.Date("2020-03-29") |
-          County == "Nassau" & date == select.date[1] + ((27*((range%/%40)+1)) %% range) |
-          County == "New York" & date == select.date[1] + ((28*((range%/%40)+1)) %% range) |
-          County == "New York State" & date == select.date[1] + ((29*((range%/%40)+1)) %% range) |
-          County == "Manhattan" & date == select.date[1] + ((30*((range%/%40)+1)) %% range) |
-          County == "Niagara" & date == select.date[1] + ((31*((range%/%40)+1)) %% range) |
-          County == "Oneida" & date == select.date[1] + ((32*((range%/%40)+1)) %% range) |
-          County == "Onondaga" & date == select.date[1] + ((33*((range%/%40)+1)) %% range) |
-          # County == "Ontario" & date == as.Date("2020-04-12") |
-          County == "Orange" & date == select.date[1] + ((35*((range%/%40)+1)) %% range) |
-          County == "Orleans" & date == select.date[1] + ((36*((range%/%40)+1)) %% range) |
-          County == "Oswego" & date == select.date[1] + ((37*((range%/%40)+1)) %% range) |
-          County == "Otsego" & date == select.date[1] + ((38*((range%/%40)+1)) %% range) |
-          County == "Putnam" & date == select.date[1] + ((39*((range%/%40)+1)) %% range) |
-          County == "Queens" & date == select.date[1] + ((40*((range%/%40)+1)) %% range) |
-          County == "Rensselaer" & date == select.date[1] + ((41*((range%/%40)+1)) %% range) |
-          County == "Richmond" & date == select.date[1] + ((42*((range%/%40)+1)) %% range) |
-          County == "Rockland" & date == select.date[1] + ((43*((range%/%40)+1)) %% range) |
-          County == "St. Lawrence" & date == select.date[1] + ((44*((range%/%40)+1)) %% range) |
-          County == "Saratoga" & date == select.date[1] + ((45*((range%/%40)+1)) %% range) |
-          County == "Schenectady" & date == select.date[1] + ((46*((range%/%40)+1)) %% range) |
-          County == "Schoharie" & date == select.date[1] + ((47*((range%/%40)+1)) %% range) |
-          County == "Schuyler" & date == select.date[1] + ((48*((range%/%40)+1)) %% range) |
-          County == "Seneca" & date == select.date[1] + ((49*((range%/%40)+1)) %% range) |
-          # County == "Steuben" & date == as.Date("2020-04-10") |
-          County == "Suffolk" & date == select.date[1] + ((51*((range%/%40)+1)) %% range) |
-          County == "Sullivan" & date == select.date[1] + ((52*((range%/%40)+1)) %% range) |
-          # County == "Tioga" & date == as.Date("2020-03-26") |
-          County == "Tompkins" & date == select.date[1] + ((53*((range%/%40)+1)) %% range) |
-          County == "Ulster" & date == select.date[1] + ((54*((range%/%40)+1)) %% range) |
-          # County == "Warren" & date == as.Date("2020-04-02") |
-          # County == "Washington" & date == as.Date("2020-03-30") |
-          # County == "Wayne" & date == as.Date("2020-04-02") |
-          County == "Westchester" & date == select.date[1] + ((58*((range%/%40)+1)) %% range) |
-          # County == "Wyoming" & date == as.Date("2020-04-10") |
-          County == "Yates" & date == select.date[1] + ((60*((range%/%40)+1)) %% range)
-      )
+    county.num <- unique(covid_NY_TS$County) %>% as.data.frame()
+    colnames(county.num) <- c("County")
+    county.num <- county.num %>%
+      mutate(num = row_number()) %>%
+      mutate(County = as.character(County))
+    
+    n_county <- nrow(county.num)
+    
+    highlight_points <- covid_NY_TS %>%
+      filter(date >= select.date[1] & date <= select.date[2]) %>%
+      left_join(county.num, by=c("County" = "County")) %>%
+      group_by(County) %>%
+      mutate(range = as.numeric(as.Date(max(date))) - as.numeric(as.Date(min(date))))  %>% 
+      mutate(max_date = as.Date(max(date))) %>%
+      mutate(max_date = max_date - ((num*((range%/%n_county) + 1))%%range))  %>%
+      filter(as.Date(date) == max_date) %>%
+      top_n(1, wt=date)
     
     NY_region_palette.df <- NY_counties_regions %>%
       dplyr::select(Region,Color) %>% 
@@ -1492,307 +1644,54 @@ server <- function(input, output, session) {
       ylab(y_lab) + 
       xlab("Date") +
       ggtitle(title)  +  
+      theme(legend.key.size = unit(1.5, "lines")) + 
       gghighlight(County %in% selected.county, use_direct_label=FALSE) +
       geom_line(size=select.size) + 
-      geom_label_repel(data=highlight_points,  aes(label=County), box.padding = unit(1.75, 'lines')) +
+      geom_label_repel(
+        data=highlight_points,  
+        aes(label=County,fill=Region), 
+        box.padding = unit(1.75, 'lines'),
+        color = "black",
+        segment.color = "black",
+        size = 5,
+        show.legend = FALSE
+      ) +
+      scale_color_manual(values=NY_region_palette, aesthetics = c("fill", "box.padding")) +
       coord_cartesian(xlim = ranges$x, ylim = ranges$y, expand = FALSE) +
       geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
+      geom_vline(aes(xintercept=as_datetime("2020-05-15"), linetype="Gov. Cuomo issues Phase 1 Reopening (5 Regions)"), color = "blue") + 
       scale_linetype_manual(name = "Events", 
-                            values = c(2), 
-                            guide = guide_legend(override.aes = list(color = c("black")))) +
+                            values = c(2,2), 
+                            guide = guide_legend(override.aes = list(color = c("blue","black")))) +
       NULL
       })
   
   ranges2 <- reactiveValues(x = NULL, y = NULL)
   
-  output$NY.cases.TS.region <- renderPlot({
-    # browser()
-    selected.region <- input$NYRegion2
-    select.size <- 2
-    select.rate <- input$rate.CoT.reg
-    select.date <- input$NYRegionDate
-    range <- as.numeric(select.date[2]) - as.numeric(select.date[1])
-    
-    if (selected.region == "All Regions") {
-      selected.region <- sort(unique(covid_NY_TS_plot.cases$Region))
-      select.size <- 1
-    }
-    
-    
-    covid_NY_TS.reg <- covid_NY_TS_plot.cases %>% 
-      group_by(Region, date) %>%
-      summarise(cases = sum(cases), p_cases = mean(p_cases))
-    
-    if (select.rate == "Overall") {
-      covid_NY_TS.reg <- covid_NY_TS.reg %>%
-        mutate(y = cases)
-      y_lab <- "Cumulative Number of Cases"
-      title <- "New York State COVID-19 Cases per Region (Mar-May 2020)"
-    }
-    else {
-      covid_NY_TS.reg <- covid_NY_TS.reg %>%
-        mutate(y = p_cases)
-      y_lab <- "Cases per 100K Population"
-      title <- "New York State COVID-19 Cases per 100K Population by Region (Mar-May 2020)"
-    }
-    
-    highlight_points <- covid_NY_TS.reg %>%
-      dplyr::filter( 
-        Region == "Adirondack" & date == select.date[1] + ((1*((range%/%11)+1)) %% range) |
-          Region == "Capital District" & date == select.date[1] + ((2*((range%/%11)+1)) %% range) |
-          Region == "Catskill" & date == select.date[1] + ((3*((range%/%11)+1)) %% range) |
-          Region == "Central New York" & date == select.date[1] + ((4*((range%/%11)+1)) %% range) |
-          Region == "Chautauqua-Alleghany" & date == select.date[1] + ((5*((range%/%11)+1)) %% range) |
-          Region == "Eastern Hudson Valley" & date == select.date[1] + ((6*((range%/%11)+1)) %% range) |
-          Region == "Finger Lakes" & date == select.date[1] + ((7*((range%/%11)+1)) %% range) |
-          Region == "Long Island" & date == select.date[1] + ((8*((range%/%11)+1)) %% range) |
-          Region == "New York City" & date == select.date[1] + ((9*((range%/%11)+1)) %% range) |
-          Region == "New York State" & date == select.date[1] + ((10*((range%/%11)+1)) %% range) |
-          Region == "Niagara Frontier" & date == select.date[1] + ((11*((range%/%11)+1)) %% range) |
-          Region == "Thousand Island" & date == select.date[1] + ((12*((range%/%11)+1)) %% range)
-      )
-    
-    NY_region_palette.df <- NY_counties_regions %>%
-      dplyr::select(Region,Color) %>% 
-      dplyr::distinct(Region,Color)
-    
-    NY_region_palette <- setNames(as.character(NY_region_palette.df$Color), as.character(NY_region_palette.df$Region))
-    
-    covid_NY_TS.reg %>%
-    filter(date >= select.date[1] & date <= select.date[2]) %>%
-    ggplot(aes(date, 
-                 y, 
-                 color = Region)) +
-      scale_color_manual(values=NY_region_palette) +
-      geom_line(size=1) +
-      scale_y_continuous(
-        trans = "log10",
-        breaks = c(10,100,500,1000,5000,10000, 50000)
-      ) +
-      scale_x_datetime(date_breaks = "1 week", date_minor_breaks = "1 day", date_labels = "%b %d") +
-      ylab(y_lab) + 
-      xlab("Date") +
-      ggtitle(title)  +  
-      gghighlight(Region %in% selected.region, use_direct_label=FALSE) +
-      geom_line(size=select.size) + 
-      # TODO: Region specific labels
-      geom_label_repel(data=highlight_points,  aes(label=Region), box.padding = unit(1.75, 'lines')) +
-      coord_cartesian(xlim = ranges$x, ylim = ranges$y, expand = FALSE) +
-      geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
-      scale_linetype_manual(name = "Events", 
-                            values = c(2), 
-                            guide = guide_legend(override.aes = list(color = c("black")))) +
-      NULL
-    
-  })
-  
-  output$NY.cases.TS.rates.reg <- renderPlot({
-    # browser()
-    selected.region <- input$NYRegion.rates.reg
-    
-    select.size <- 2
-    
-    if (selected.region == "All Regions") {
-      selected.region <- sort(unique(covid_NY_TS_plot.cases$Region))
-      select.size <- 1
-    }
-    
-    highlight_points <- covid_NY_TS_plot.cases %>% 
-      group_by(Region, date) %>%
-      summarize(cases = mean(cases), log_cases = mean(log_cases), p_cases = mean(p_cases)) %>%
-      dplyr::filter( 
-        Region == "Adirondack" & date == as.Date("2020-04-26") |
-          Region == "Capital District" & date == as.Date("2020-04-25") |
-          Region == "Catskill" & date == as.Date("2020-04-12") |
-          Region == "Central New York" & date == as.Date("2020-04-12") |
-          Region == "Chautauqua-Alleghany" & date == as.Date("2020-04-10") |
-          Region == "Eastern Hudson Valley" & date == as.Date("2020-04-12") |
-          Region == "Finger Lakes" & date == as.Date("2020-04-26") |
-          Region == "Long Island" & date == as.Date("2020-04-25") |
-          Region == "New York City" & date == as.Date("2020-04-12") |
-          Region == "New York State" & date == as.Date("2020-04-02") |
-          Region == "Niagara Frontier" & date == as.Date("2020-04-26") |
-          Region == "Thousand Island" & date == as.Date("2020-04-25")
-      )
-    
-    NY_region_palette.df <- NY_counties_regions %>%
-      dplyr::select(Region,Color) %>% 
-      dplyr::distinct(Region,Color)
-    
-    NY_region_palette <- setNames(as.character(NY_region_palette.df$Color), as.character(NY_region_palette.df$Region))
-    
-    covid_NY_TS_plot.cases %>% 
-      group_by(Region, date) %>%
-      summarize(cases = mean(cases), log_cases = mean(log_cases), p_cases = mean(p_cases)) %>%
-      dplyr::filter(p_cases >= 10) %>%
-      ggplot(aes(x=date, y=p_cases, color = Region)) +
-      scale_color_manual(values=NY_region_palette) +
-      geom_line(size=1) +
-      scale_y_continuous(
-        trans = "log10",
-        breaks = c(10,50,100,500,1000,5000)
-      ) +
-      scale_x_datetime(date_breaks = "1 week", date_minor_breaks = "1 day", date_labels = "%b %d") +
-      ylab("Cases per 100K Population") + 
-      ggtitle("New York State COVID-19 Cases per 100K Population by Region (Mar-May 2020)")  +
-      gghighlight(Region %in% selected.region, use_direct_label=FALSE) +
-      geom_line(size=select.size) + 
-      geom_label_repel(data=highlight_points,  aes(label=Region), segment.color="black", force=10) + 
-      # TODO: New highlight points for Regions
-      coord_cartesian(xlim = ranges2$x, ylim = ranges2$y, expand = FALSE) +
-      geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
-      scale_linetype_manual(name = "Events", 
-                            values = c(2), 
-                            guide = guide_legend(override.aes = list(color = c("black")))) +
-      NULL
-    
-  })
-  
-  # This sets the range for zooming the following plot
-  
-  output$NY.cases.TS.rates <- renderPlot({
-    # browser()
-    selected.region <- input$NYRegion.rates
-    selected.county <- input$NYCounty.rates
-    select.date <- input$NYCoTDate
-    
-    #if (is.null(selected.county)) {
-    #  selected.county <- "All Counties"
-    #}
-    select.size <- 2
-    if (selected.county != "All Counties") {
-      selected.region <- "All Regions"
-    }
-    
-    if (selected.region == "All Regions") {
-      selected.region <- sort(unique(covid_NY_TS_plot.cases$Region))
-      if (selected.county == "All Counties") {
-        selected.county <- sort(unique(covid_NY_TS_plot.cases$County))
-        select.size <- 1
-      }
-    }
-    else {
-      selected.county <- sort(unique(covid_NY_TS_plot.cases$County))
-    }
-    
-    highlight_points <- covid_NY_TS_plot.cases %>% 
-      dplyr::filter( 
-        County == "Albany" & date == as.Date("2020-04-26") |
-          # County == "Allegany" & date == as.Date("2020-03-29") |
-          County == "Bronx" & date == as.Date("2020-04-25") |
-          County == "Broome" & date == as.Date("2020-04-12") |
-          # County == "Cattaraugus" & date == as.Date("2020-03-30") |
-          County == "Cayuga" & date == as.Date("2020-04-12") |
-          County == "Chautauqua" & date == as.Date("2020-04-10") |
-          # County == "Chemung" & date == as.Date("2020-04-10") |
-          County == "Chenango" & date == as.Date("2020-04-12") |
-          County == "Clinton" & date == as.Date("2020-04-26") |
-          # County == "Columbia" & date == as.Date("2020-03-29") |
-          County == "Cortland" & date == as.Date("2020-04-25") |
-          # County == "Delaware" & date == as.Date("2020-04-02") |
-          County == "Dutchess" & date == as.Date("2020-04-12") |
-          County == "Erie" & date == as.Date("2020-04-02") |
-          # County == "Essex" & date == as.Date("2020-04-10") |
-          # County == "Franklin" & date == as.Date("2020-04-10") |
-          # County == "Fulton" & date == as.Date("2020-04-12") |
-          County == "Genesee" & date == as.Date("2020-04-26") |
-          # County == "Greene" & date == as.Date("2020-03-29") |
-          County == "Hamilton" & date == as.Date("2020-04-25") |
-          County == "Herkimer" & date == as.Date("2020-04-12") |
-          # County == "Jefferson" & date == as.Date("2020-03-30") |
-          County == "Kings" & date == as.Date("2020-04-12") |
-          # County == "Lewis" & date == as.Date("2020-04-10") |
-          # County == "Livingston" & date == as.Date("2020-04-10") |
-          County == "Madison" & date == as.Date("2020-04-12") |
-          # County == "Monroe" & date == as.Date("2020-03-26") |
-          # County == "Montgomery" & date == as.Date("2020-03-29") |
-          County == "Nassau" & date == as.Date("2020-04-15") |
-          County == "New York" & date == as.Date("2020-04-10") |
-          County == "New York State" & date == as.Date("2020-04-12") |
-          County == "Manhattan" & date == as.Date("2020-04-10") |
-          County == "Niagara" & date == as.Date("2020-04-12") |
-          County == "Oneida" & date == as.Date("2020-04-10") |
-          County == "Onondaga" & date == as.Date("2020-04-10") |
-          # County == "Ontario" & date == as.Date("2020-04-12") |
-          County == "Orange" & date == as.Date("2020-04-18") |
-          County == "Orleans" & date == as.Date("2020-04-01") |
-          County == "Oswego" & date == as.Date("2020-04-25") |
-          County == "Otsego" & date == as.Date("2020-04-12") |
-          County == "Putnam" & date == as.Date("2020-04-20") |
-          County == "Queens" & date == as.Date("2020-04-12") |
-          County == "Rensselaer" & date == as.Date("2020-04-10") |
-          County == "Richmond" & date == as.Date("2020-04-11") |
-          County == "Rockland" & date == as.Date("2020-04-12") |
-          County == "St. Lawrence" & date == as.Date("2020-04-26") |
-          County == "Saratoga" & date == as.Date("2020-04-01") |
-          County == "Schenectady" & date == as.Date("2020-04-25") |
-          County == "Schoharie" & date == as.Date("2020-04-12") |
-          County == "Schuyler" & date == as.Date("2020-04-10") |
-          County == "Seneca" & date == as.Date("2020-04-12") |
-          # County == "Steuben" & date == as.Date("2020-04-10") |
-          County == "Suffolk" & date == as.Date("2020-04-10") |
-          County == "Sullivan" & date == as.Date("2020-04-12") |
-          # County == "Tioga" & date == as.Date("2020-03-26") |
-          County == "Tompkins" & date == as.Date("2020-04-10") |
-          County == "Ulster" & date == as.Date("2020-04-20") |
-          # County == "Warren" & date == as.Date("2020-04-02") |
-          # County == "Washington" & date == as.Date("2020-03-30") |
-          # County == "Wayne" & date == as.Date("2020-04-02") |
-          County == "Westchester" & date == as.Date("2020-04-10") |
-          # County == "Wyoming" & date == as.Date("2020-04-10") |
-          County == "Yates" & date == as.Date("2020-04-12")
-      )
-    
-    NY_region_palette.df <- NY_counties_regions %>%
-      dplyr::select(Region,Color) %>% 
-      dplyr::distinct(Region,Color)
-    
-    NY_region_palette <- setNames(as.character(NY_region_palette.df$Color), as.character(NY_region_palette.df$Region))
-    
-      covid_NY_TS_plot.cases %>% 
-        dplyr::filter(p_cases >= 10) %>%
-        ggplot(aes(x=date, y=p_cases, color = Region, group=County)) +
-        scale_color_manual(values=NY_region_palette) +
-        geom_line(size=1) +
-        scale_y_continuous(
-          trans = "log10",
-          breaks = c(10,50,100,500,1000,5000)
-        ) +
-      scale_x_datetime(date_breaks = "1 week", date_minor_breaks = "1 day", date_labels = "%b %d") +
-      ylab("Cases per 100K Population") + 
-      ggtitle("New York State COVID-19 Cases per 100K Population by County (Mar-May 2020)")  +
-        gghighlight(County %in% selected.county & Region %in% selected.region, use_direct_label=FALSE) +
-        geom_line(size=select.size) + 
-      geom_label_repel(data=highlight_points,  aes(label=County), segment.color="black", force=10) + 
-      coord_cartesian(xlim = ranges2$x, ylim = ranges2$y, expand = FALSE) +
-        geom_vline(aes(xintercept=as_datetime("2020-03-20"), linetype="Gov. Cuomo issues stay-at-home order"), color = "black") + 
-        scale_linetype_manual(name = "Events", 
-                              values = c(2), 
-                              guide = guide_legend(override.aes = list(color = c("black")))) +
-        NULL
-    
-  })
-  
-
-  
   output$click_info <- renderPrint({
     hover <- input$NY.cases.TS_click
-    selected.county <- input$NYCounty
-    select.rate <- input$rate.CoT
-    select.date <- input$NYCoTDate
+    selected.region <- input$NYRegion
+    select.rate <- input$rate.DoT
+    select.date <- input$NYDoTDate
     
-    if (select.rate == "Overall") {
-      covid_NY_TS <- covid_NY_TS_plot.cases %>%
-        mutate(y = cases)
+    if (select.rate=="Overall") {
+      covid_NY_TS_plot.ma <- covid_NY_TS_plot.deaths %>%
+        group_by(Region, date) %>%
+        summarise(diff = sum(diff)) %>%
+        mutate(y = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+        filter(y > 0)
       per <- ": "
     }
     else {
-      covid_NY_TS <- covid_NY_TS_plot.cases %>%
-        mutate(y = p_cases) %>%
-        filter(y >= 10)
+      covid_NY_TS_plot.ma <- covid_NY_TS_plot.deaths %>%
+        group_by(Region, date) %>%
+        summarise(p_diff = sum(p_diff)) %>%
+        mutate(y = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right"))) %>%
+        filter(y > 0)
       per <- "/100k: "
     }
-    point <- nearPoints(covid_NY_TS, hover, threshold = 5, addDist = TRUE, maxpoints = 1,
+    
+    point <- nearPoints(covid_NY_TS_plot.ma, hover, threshold = 5, addDist = TRUE, maxpoints = 1,
                         xvar="date", yvar="y")
     # browser()
     # calculate point position INSIDE the image as percent of total dimensions
@@ -1812,36 +1711,35 @@ server <- function(input, output, session) {
 
     # actual tooltip created as wellPanel
     if (nrow(point) != 0) {
-      if (point$County == "New York State"){
+      avg_window <- as.Date(point$date, format = "%m-%d-%Y") - moving.avg.window + 1
+      if (point$Region == "New York State"){
         wellPanel(
-        # style = style,
-        class = "gg_tooltip",
-        h3(HTML(paste0("<b>",point$County,"</b><br>Total Cases",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
-      )
+          class = "gg_tooltip",
+          h3(HTML(paste0("<b>",point$Region,"</b><br>Average New Deaths",per,format(round(point$y),big.mark = ","),"<br>Window: ",avg_window, " to ", point$date)))
+        )
       } else {
         wellPanel(
           class = "gg_tooltip",
-          h3(HTML(paste0("<b>",point$County," County</b><br>Total Cases",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
+          h3(HTML(paste0("<b>",point$Region," Region</b><br>Average New Deaths",per,format(round(point$y),big.mark = ","),"<br>Window: ",avg_window, " to ", point$date)))
         )
         
       }
     }
-    else if(selected.county != "All Counties") {
+    else if(selected.region != "All Regions") {
       yesterday <- select.date[2]
-      point <- covid_NY_TS %>%
-        filter(County == selected.county & date == yesterday)
-      if (selected.county == "New York State"){
+      avg_window <- as.Date(yesterday, format = "%m-%d-%Y") - moving.avg.window + 1
+      point <- covid_NY_TS_plot.ma %>%
+        filter(Region == selected.region & date == yesterday)
+      if (selected.region == "New York State"){
         wellPanel(
           class = "gg_tooltip",
-          h3(HTML(paste0("<b>",selected.county,"</b><br>Total Cases",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
+          h3(HTML(paste0("<b>",selected.region,"</b><br>Average New Deaths",per,format(round(point[1,]$y), big.mark = ","),"<br>Window: ",avg_window, " to ", yesterday)))
         )
       } else {
         wellPanel(
-          # style = style,
           class = "gg_tooltip",
-          h3(HTML(paste0("<b>",selected.county," County</b><br>Total Cases",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
+          h3(HTML(paste0("<b>",selected.region," Region</b><br>Average New Deaths",per,format(round(point[1,]$y), big.mark = ","),"<br>Window: ",avg_window, " to ", yesterday)))
         )
-        
       }
     }
   })
@@ -1890,13 +1788,6 @@ server <- function(input, output, session) {
     style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); 
                     width:30%; padding: 0; margin: 0;",
                     "left:", 0, "px;")
-    # print(hover$x)
-    # print(hover$domain$left)
-    # print(hover$domain$right - hover$domain$left)
-    # print(hover$y)
-    # print(hover$domain$top)
-    # print(hover$range$bottom - hover$range$top)
-    
     
     # actual tooltip created as wellPanel
     if (nrow(point) != 0) {
@@ -1935,26 +1826,45 @@ server <- function(input, output, session) {
   
   output$click_info_reg <- renderPrint({
     hover <- input$NY.cases.TS_click_reg
-    selected.region <- input$NYRegion2
-    select.region <- input$rate.CoT.reg
-    select.date <- input$NYRegionDate
+    #selected.region <- input$NYRegion2
+    #select.region <- input$rate.CoT.reg
+    #select.date <- input$NYRegionDate
     
-    covid_NY_TS.reg <- covid_NY_TS_plot.cases %>%
-      group_by(Region, date) %>%
-      summarise(cases = sum(cases), p_cases = mean(p_cases))
+    selected.county <- input$NYCounty
+    select.rate <- input$rate.cDoT
+    select.date <- input$NYcDoTDate
     
-    if (select.region == "Overall") {
-      covid_NY_TS.reg <- covid_NY_TS.reg %>%
-        mutate(y = cases)
+    NYC <- covid_NY_TS_plot.deaths %>%
+      filter(Region == "New York City") %>%
+      group_by(Region, Color, date) %>%
+      summarise(deaths = sum(deaths),
+                Population = sum(Population),
+                p_deaths = mean(p_deaths),
+                diff = sum(diff),
+                p_diff = mean(p_diff),
+                log_deaths = sum(log_deaths),
+                log_p_deaths = mean(log_p_deaths)) %>%
+      mutate(County = "New York City")
+    
+    covid_NY_TS <- covid_NY_TS_plot.deaths %>%
+      filter(Region != "New York City") %>%
+      rbind.data.frame(NYC)
+    
+    
+    if (select.rate=="Overall") {
+      covid_NY_TS <- covid_NY_TS %>%
+        mutate(y = deaths) %>%
+        filter(y >= 20)
       per <- ": "
     }
     else {
-      covid_NY_TS.reg <- covid_NY_TS.reg %>%
-        mutate(y = p_cases)
+      covid_NY_TS <- covid_NY_TS %>%
+        mutate(y = p_deaths) %>%
+        filter(y >= 5)
       per <- "/100k: "
     }
     
-    point <- covid_NY_TS.reg %>%
+    point <- covid_NY_TS %>%
       nearPoints(hover, threshold = 5, addDist = TRUE, maxpoints = 1,
                         xvar="date", yvar="y")
     # browser()
@@ -1979,147 +1889,37 @@ server <- function(input, output, session) {
         wellPanel(
           # style = style,
           class = "gg_tooltip",
-          h3(HTML(paste0("<b>",point$Region,"</b><br>Total Cases",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
+          h3(HTML(paste0("<b>",point$County,"</b><br>Total Deaths",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
           )
       } else {
         wellPanel(
           # style = style,
           class = "gg_tooltip",
-          h3(HTML(paste0("<b>",point$Region," Region</b><br>Total Cases",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
-        )
-        
-      }
-    }
-    else if(selected.region != "All Regions") {
-      yesterday <- select.date[2]
-      point <- covid_NY_TS.reg %>%
-        filter(Region == selected.region & date == yesterday)
-      if (selected.region == "New York State"){
-        wellPanel(
-          class = "gg_tooltip",
-          h3(HTML(paste0("<b>",point$Region,"</b><br>Total Cases",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
-        )
-      } else {
-        wellPanel(
-          # style = style,
-          class = "gg_tooltip",
-          h3(HTML(paste0("<b>",point$Region," Region</b><br>Total Cases",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
-          )
-      }
-    }
-  })
-  
-  output$click_info_rates <- renderPrint({
-    hover <- input$NY.cases.TS.rates_click
-    selected.county <- input$NYCounty.rates
-    
-    point <- nearPoints(covid_NY_TS_plot.cases, hover, threshold = 5, addDist = TRUE, maxpoints = 1,
-                        xvar="date", yvar="p_cases")
-    
-    # calculate point position INSIDE the image as percent of total dimensions
-    # from left (horizontal) and from top (vertical)
-    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
-    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
-    
-    # calculate distance from left and bottom side of the picture in pixels
-    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
-    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
-    
-    # create style property for tooltip
-    # background color is set so tooltip is a bit transparent
-    # z-index is set so we are sure are tooltip will be on top
-    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
-                    "left:", left_px + 2, "px; top:", top_px + 2, "px;")
-    
-    # actual tooltip created as wellPanel
-    if (nrow(point) != 0) {
-      if (point$County == "New York State"){
-        wellPanel(
-          # style = style,
-          p(HTML(paste0(point$County,": ",format(round(point$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",point$date)))
-        )
-      } else {
-        wellPanel(
-          # style = style,
-          p(HTML(paste0(point$County," County: ",format(round(point$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",point$date)))
+          h3(HTML(paste0("<b>",point$County," County</b><br>Total Deaths",per,format(round(point$y),big.mark = ","),"<br>Date: ",point$date)))
         )
         
       }
     }
     else if(selected.county != "All Counties") {
-      yesterday <- as.Date(update_date, format = "%m-%d-%Y") - 1
-      point <- covid_NY_TS_plot.cases %>%
+      yesterday <- select.date[2]
+      point <- covid_NY_TS %>%
         filter(County == selected.county & date == yesterday)
       if (selected.county == "New York State"){
         wellPanel(
-          p(HTML(paste0(selected.county,": ",format(round(point[1,]$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",yesterday)))
+          class = "gg_tooltip",
+          h3(HTML(paste0("<b>",point$County,"</b><br>Total Deaths",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
         )
       } else {
         wellPanel(
           # style = style,
-          p(HTML(paste0(selected.county," County: ",format(round(point[1,]$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",yesterday)))
-        )
+          class = "gg_tooltip",
+          h3(HTML(paste0("<b>",point$County," County</b><br>Total Deaths",per,format(round(point[1,]$y),big.mark = ","),"<br>Date: ",yesterday)))
+          )
       }
     }
   })
   
-  output$click_info_rates_reg <- renderPrint({
-    hover <- input$NY.cases.TS.rates_click.reg
-    selected.region <- input$NYRegion.rates.reg
-    
-    point <- covid_NY_TS_plot.cases %>%
-      group_by(Region, date) %>%
-      summarise(p_cases = mean(p_cases)) %>%
-      nearPoints (hover, threshold = 5, addDist = TRUE, maxpoints = 1,
-                        xvar="date", yvar="p_cases")
-    
-    # calculate point position INSIDE the image as percent of total dimensions
-    # from left (horizontal) and from top (vertical)
-    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
-    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
-    
-    # calculate distance from left and bottom side of the picture in pixels
-    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
-    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
-    
-    # create style property for tooltip
-    # background color is set so tooltip is a bit transparent
-    # z-index is set so we are sure are tooltip will be on top
-    style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
-                    "left:", left_px + 2, "px; top:", top_px + 2, "px;")
-    
-    # actual tooltip created as wellPanel
-    if (nrow(point) != 0) {
-      if (point$Region == "New York State"){
-        wellPanel(
-          # style = style,
-          p(HTML(paste0(point$Region,": ",format(round(point$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",point$date)))
-        )
-      } else {
-        wellPanel(
-          # style = style,
-          p(HTML(paste0(point$Region," Region: ",format(round(point$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",point$date)))
-        )
-      }
-    }
-    else if(selected.region != "All Regions") {
-      yesterday <- as.Date(update_date, format = "%m-%d-%Y") - 1
-      point <- covid_NY_TS_plot.cases %>%
-        group_by(Region, date)  %>%
-        summarise(p_cases = mean(p_cases)) %>%
-        filter(Region == selected.region & date == yesterday)
-      if (selected.region == "New York State"){
-        wellPanel(
-          p(HTML(paste0(selected.region,": ",format(round(point[1,]$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",yesterday)))
-        )
-      } else {
-        wellPanel(
-          # style = style,
-          p(HTML(paste0(selected.region," Region: ",format(round(point[1,]$p_cases),big.mark = ",")," COVID-19 cases per 100K on ",yesterday)))
-        )
-      }
-    }
-  })
+  
   
   observeEvent(input$NY.cases.TS_dblclick, {
     brush <- input$NY.cases.TS_brush
@@ -2162,8 +1962,6 @@ server <- function(input, output, session) {
       arrange(desc(Race.Ethnicity))
     
     # Setup: COVIDMINDER Colors and DI bins
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     di_pal <- leaflet::colorBin(colors, domain = NYS_Dis_m.df$Dis, bins = bins, reverse=FALSE)
     
     # Create color column with correct mapping
@@ -2225,8 +2023,6 @@ server <- function(input, output, session) {
       arrange(desc(Race.Ethnicity))
     
     # Setup: COVIDMINDER Colors and DI bins
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     di_pal <- leaflet::colorBin(colors, domain = NYC_Dis_m.df$Dis, bins = bins, reverse=FALSE)
     
     # Create color column with correct mapping
@@ -2287,8 +2083,6 @@ server <- function(input, output, session) {
       mutate(Dis = -log(Percent.of.Pop/Percent.of.Fatalities))
     
     # Setup: COVIDMINDER Colors and DI bins
-    colors <- c("#253494","#4575B4", "#74ADD1","#ABD9E9","#f7f7f7","#FDAE61","#F46D43", "#D73027", "#BD0026")
-    bins <- c(5, 3, 2, 1, .2, -.2, -1, -2, -3, -5)
     di_pal <- leaflet::colorBin(colors, domain = CT_Dis_m.df$Dis, bins = bins, reverse=FALSE)
     
     
@@ -2336,6 +2130,986 @@ server <- function(input, output, session) {
     
   })
   
+  ### State Report Cards Code ###
+  
+  output$state.report.county.selector <- renderUI ({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    
+    # Grab state subset for dataframe
+    state.df <- covid_TS_counties_long.cases %>%
+      select(-c(countyFIPS, stateFIPS))%>%
+      filter(State == state_initial)
+    
+    if (state_initial == "NY") {
+      nyc.population <- state.df %>%
+        filter(County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        group_by(County) %>%
+        top_n(n=1, wt=date) %>%
+        select(population)
+      nyc.population <- sum(nyc.population$population)
+      
+      NYC <- state.df %>%
+        filter(County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        group_by(State, date) %>%
+        summarise(
+          County = "New York City",
+          cases = sum(cases),
+          deaths = sum(deaths),
+          population = nyc.population,
+          p_cases = sum(cases)*100000/nyc.population,
+          p_deaths = sum(deaths)*100000/nyc.population,
+          diff = sum(diff),
+          p_diff = sum(diff)*100000/nyc.population,
+          d_diff = sum(d_diff),
+          p.d_diff = sum(p.d_diff)*100000/nyc.population
+        )
+      state.df <- state.df %>%
+        filter(!County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        rbind.data.frame(NYC)
+    }
+    
+    counties <- state.df %>%
+      select(County) %>%
+      unlist() %>%
+      unique()
+    
+    selected <- state.df %>%
+      group_by(County) %>%
+      top_n(1, cases) %>%
+      arrange(desc(cases)) %>%
+      select(County) %>%
+      unlist() %>%
+      unique()
+    
+    if (length(selected) > 10) {
+      selected <- selected[1:10]
+    }
+    selectInput(inputId = "SRC.county",
+                label = "County Selector",
+                choices = sort(counties),
+                selected = selected,
+                multiple = TRUE,
+                selectize = FALSE,
+                size = min(5, length(counties))
+                )
+  })
+  
+  output$US.report.state.selector <- renderUI({
+    state.names <- states %>%
+      filter(NAME != "District of Columbia") %>%
+      select(NAME) %>%
+      unlist() %>%
+      unique() %>%
+      sort()
+    
+    selected <- states %>%
+      arrange(desc(`Daily Case_rate`)) %>%
+      select(NAME) %>%
+      unlist() %>%
+      unique()
+    
+    if (length(selected > 10)) {
+      selected <- selected[1:10]
+    }
+    selectInput(inputId = "NRC.state",
+                label = "State Selector",
+                choices = state.names,
+                selected = selected,
+                multiple = TRUE,
+                selectize = FALSE,
+                size = min(5, length(state.names))
+    )
+    
+  })
+  
+  output$main_title <- renderUI({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    tagList(
+      tags$h1(paste0(state_name, " Overview")),
+      tags$h2(tags$a(paste0("State rank: ", ranking[ranking$State == state_initial, "rank"]), tags$sup("*"), href = "#ranking", style="color:black;"))
+    )
+  })
+  
+  output$state.CoT.title <- renderUI({
+    state_name <- input$state_name
+    tagList(
+      tags$h2(paste0(state_name, " COVID-19 Case Curve")),
+      tags$h3(paste0("How have ", state_name, " COVID-19 Cases Over Time per 100k changed compared to US?"))
+    )
+  })
+  
+  
+  output$state.DoT.title <- renderUI({
+    state_name <- input$state_name
+    tagList(
+      tags$h2(paste0(state_name, " COVID-19 Mortality Curve")),
+      tags$h3(paste0("How has ", state_name, " COVID-19 Mortality Over Time per 100k changed compared to US?"))
+    )
+  })
+  
+  output$state.trends.title <- renderUI({
+    state_name <- input$state_name
+    rate <- input$SRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    tagList(
+      tags$h2(paste0(state_name, " Daily Case Trends")),
+      tags$h3(paste0("How have ", get_y_label(y.value), " changed in ", state_name," counties? (7 day average)"))
+    )
+  })
+  
+  output$state.county.cases <- renderUI({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    time <- input$SRC.case.time
+    if (time == "Daily") {
+      m.a.w <- paste0(" (",time.period," day average)")
+    }
+    else {
+      m.a.w <- ""
+    }
+    tagList(
+      tags$h2(paste0(state_name, " COVID-19 Case Hotspots")),
+      tags$h3(paste0("What are the ", state_initial, " Countywide disparities in ",time," Case Rates?",m.a.w))
+    )
+  })
+  
+  output$state.county.deaths <- renderUI({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    time <- input$SRC.death.time
+    if (time == "Daily") {
+      m.a.w <- paste0(" (",time.period," day average)")
+    }
+    else {
+      m.a.w <- ""
+    }
+    
+    tagList(
+      tags$h2(paste0(state_name, " COVID-19 Mortality Hotspots")),
+      tags$h3(paste0("What are the ", state_initial, " Countywide disparities in ",time," Mortality Rates?", m.a.w))
+    )
+  })
+  
+  output$determinant.title <- renderUI({
+    state_name <- input$state_name
+    det <- input$state.determinant
+    if(det ==  "CRD Mortality") {
+      det <- "Cronic Respiratory Disease (CRD) Mortality"
+    }
+    tagList(
+      tags$h2(paste0(state_name, " ", det, " Disparities")),
+      tags$h3(paste0("What are the ", state_name, " disparities in ", det, " Rates compared to US Average?"))
+    )
+  })
+  
+  output$determinant.text <- renderText({
+    det <- input$state.determinant
+    paste0("Nationwide, ",det," has been observed as a leading comorbidity of COVID-19.")
+  })
+  
+  output$state.report <- render_gt({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    stats.table(state_initial)
+  })
+  
+  output$map.cases <- renderLeaflet({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    time <- input$SRC.case.time
+    if (time == "Daily") {
+      param <- "Daily Case"
+    }
+    else {
+      param <- "Case"
+    }
+    
+    geo.plot(state_initial, param)
+  })
+  
+  output$map.cases.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_cases.png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      title <- tags$h1(paste0(state_name, " COVID-19 Case Hotspots"))
+      time <- input$SRC.case.time
+      if (time == "Daily") {
+        param <- "Daily Case"
+      }
+      else {
+        param <- "Case"
+      }
+      
+      mapshot(x = geo.plot(state_initial, 
+                           param, 
+                           title = tags$div(title)
+                           ),
+              file = file,
+              cliprect = "viewport",
+              selfcontained = F)
+    }
+  )
+  
+  output$map.deaths <- renderLeaflet({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    time <- input$SRC.death.time
+    if (time == "Daily") {
+      param <- "Daily Mortality"
+    }
+    else {
+      param <- "Mortality"
+    }
+    
+    geo.plot(state_initial, param)
+  })
+  
+  
+  output$map.deaths.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_mortality.png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      title <- tags$h1(paste0(state_name, " COVID-19 Case Hotspots"))
+      time <- input$SRC.death.time
+      if (time == "Daily") {
+        param <- "Daily Mortality"
+      }
+      else {
+        param <- "Mortality"
+      }
+      mapshot(x = geo.plot(state_initial, 
+                           param,
+                           title = tags$div(title)),
+              file = file,
+              cliprect = "viewport",
+              selfcontained = F)
+    }
+  )
+  
+  output$maps.determinant <- renderLeaflet({
+    state_name <- input$state_name
+    det <- input$state.determinant
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    geo.plot(state_initial, det)
+  })
+  
+  
+  output$map.determinant.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      det <- input$state.determinant
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_",det,".png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      det <- input$state.determinant
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      det_title <- det
+      if(det ==  "CRD Mortality") {
+        det_title <- "Cronic Respiratory Disease (CRD) Mortality"
+      }
+      title <- tags$h1(paste0(state_name, " ", det_title, " Rate Disparities Compared to US Average"))
+      mapshot(x = geo.plot(state_initial, 
+                           det,
+                           title = tags$div(title, class = "leaflet-map-title")),
+              file = file,
+              cliprect = "viewport",
+              selfcontained = F)
+    }
+  )
+  
+  barplot.tooltip <- function(click, 
+                              state_initial,
+                              y.value="p_cases", 
+                              moving.avg.window=14) {
+    #print(session$clientData)
+    pixelratio <- session$clientData$pixelratio
+    left.offset <- 17
+    top.offset <- 82
+    
+    if(is.null(click)) {return(NULL)}
+    my_diff <- get_dif(y.value)
+    category <- get_y_label(y.value)
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (click$x - click$domain$left) / (click$domain$right - click$domain$left)
+    top_pct <- (click$domain$top - click$y) / (click$domain$top - click$domain$bottom)
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- click$range$left + left_pct * (click$range$right - click$range$left)
+    top_px <- click$range$top + top_pct * (click$range$bottom - click$range$top)
+    style <- paste0("position:absolute; 
+                    z-index:100;",
+                    "left:", (left_px)/pixelratio + left.offset, "px; 
+                    top:", (top_px)/pixelratio + top.offset, "px;")
+    
+    state_cases <- covid_TS_state_long.cases %>%
+      filter(State == state_initial) %>%
+      rename(Values = all_of(y.value)) %>%
+      rename(Value_diff = all_of(my_diff)) %>%
+      mutate(diff.ma =  c(Value_diff[1:7-1], zoo::rollmean(Value_diff, 7, align="right"))) %>%
+      #mutate(pct_increase =diff.ma/Values*100) %>%
+      mutate(pct_increase =Value_diff/Values*100) %>%
+      mutate(ma = c(numeric(moving.avg.window-1), zoo::rollmean(Values, moving.avg.window, align = "right")))
+    #state_cases[state_cases$diff.ma > 0 & state_cases$pct_increase > 5, "pct_increase"] <- 5
+    #state_cases[state_cases$Value_diff > 0 & state_cases$pct_increase > 5, "pct_increase"] <- 5
+    state_cases[is.na(state_cases$pct_increase) | state_cases$pct_increase < 0, "pct_increase"] <- 0
+    state_cases <- state_cases %>%
+      filter(date == as.Date(as.POSIXct(click$x, origin="1970-01-01"), tz="EST"))
+    # actual tooltip created as wellPanel
+    
+    five.plus <- ""
+    #if (length(state_cases$pct_increase) > 0) {
+    #  if(state_cases$pct_increase >= 5) {
+    #    five.plus <- "+"
+    #  }
+    #}
+    wellPanel(
+      style = style,
+      class = "gg_tooltip",
+      p(HTML(paste0("<b> Date: </b>", as.Date(as.POSIXct(click$x, origin="1970-01-01"), tz="EST"), "<br/>",
+                    "<b>", category, ": </b>", format(round(state_cases$Values,2), big.mark = ","), "<br/>",
+                    "<b> Change in ", category, ": </b>+",  format(round(state_cases$Value_diff,2),big.mark = ","), "<br/>",
+                    "<b> Daily Percentage Increase: </b>",  format(round(state_cases$pct_increase,2),big.mark = ","), "%",five.plus,"<br/>"
+    ))))
+  }
+  
+  output$state.CoT.tooltip <- renderUI({
+    hover <- input$state.CoT.hover
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    
+    barplot.tooltip(hover, state_initial, "p_cases")
+  })
+  
+  output$state.DoT.tooltip <- renderUI({
+    hover <- input$state.DoT.hover
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    
+    barplot.tooltip(hover, state_initial, "p_deaths")
+  })
+  
+  trends.tooltip <- function(hover, 
+                             state_initial = "NY",
+                             y.value="p_cases", 
+                             counties = c("Rensselaer"), 
+                             moving.avg.window=7) {
+    #print(session$clientData)
+    pixelratio <- session$clientData$pixelratio
+    left.offset <- 20
+    top.offset <- 210
+    
+    #if(is.null(click)) {return(NULL)}
+    y_label <- get_y_label(y.value)
+    state.name <- state.abr[state.abr$abr==state_initial,"name"]
+    covid_TS_counties.cases.plot <- covid_TS_counties_long.cases %>%
+      select(-c(countyFIPS, stateFIPS)) %>%
+      filter(State == state_initial) %>%
+      group_by(County) %>% 
+      filter(n() >= moving.avg.window) %>%
+      mutate(diff = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+      mutate(p_diff = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right"))) %>%
+      ungroup()
+    
+    if (state_initial == "NY") {
+      nyc.population <- covid_TS_counties.cases.plot %>%
+        filter(County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        group_by(County) %>%
+        top_n(n=1, wt=date) %>%
+        select(population)
+      nyc.population <- sum(nyc.population$population)
+      
+      NYC <- covid_TS_counties.cases.plot %>%
+        filter(County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        group_by(State, date) %>%
+        summarise(
+          County = "New York City",
+          cases = sum(cases),
+          deaths = sum(deaths),
+          population = nyc.population,
+          p_cases = sum(cases)*100000/nyc.population,
+          p_deaths = sum(deaths)*100000/nyc.population,
+          diff = sum(diff),
+          p_diff = sum(diff)*100000/nyc.population,
+          d_diff = sum(d_diff),
+          p.d_diff = sum(p.d_diff)*100000/nyc.population
+        ) 
+      covid_TS_counties.cases.plot <- covid_TS_counties.cases.plot %>%
+        filter(!County %in% c("New York", "Kings", "Queens", "Bronx", "Richmond")) %>%
+        rbind.data.frame(NYC)
+      
+    }
+    
+    state <- covid_TS_state_long.cases %>%
+      filter(State == state_initial) %>%
+      filter(n() >= moving.avg.window) %>%
+      mutate(diff = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+      mutate(p_diff = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right")))
+    
+    state$County = state_initial
+    
+    covid_TS_counties.cases.plot <-  covid_TS_counties.cases.plot %>%
+      filter(County %in% counties) %>%
+      rbind.data.frame(state) %>%
+      filter(get(y.value) > 0) %>%
+      group_by(County)
+    
+    point <- nearPoints(covid_TS_counties.cases.plot, hover, threshold = 5, maxpoints = 1, addDist = TRUE) %>%
+      rename(Values = all_of(y.value))
+    
+    if (nrow(point) == 0) return(NULL)
+    point <- point[1,]
+    
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - log(hover$y, 10)) / (hover$domain$top - hover$domain$bottom)
+    # Log10 is needed to account for log y axis
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    
+    style <- paste0("position:absolute; 
+                    z-index:100;",
+                    "left:", (left_px)/pixelratio + left.offset, "px; 
+                    top:", (top_px)/pixelratio + top.offset, "px;")
+    
+    state.or.county = "County: "
+    if (state_initial %in% point$County) {
+      state.or.county = "State: "
+      point <- point %>%
+        left_join(state.abr[c("name", "abr")],
+                  by = c("State" = "abr"))
+    }
+    else {
+      point$name <- point$County
+    }
+    wellPanel(
+      style = style,
+      class = "gg_tooltip",
+      p(HTML(paste0("<b>",state.or.county, "</b>", point$name, "<br/>",
+                    "<b> Date: </b>", point$date, "<br/>",
+                    "<b>", y_label, ": </b>",  format(round(point$Values),big.mark = ","), "<br/>"
+      ))))
+    
+  }
+  
+  output$state.trends.tooltip <- renderUI({
+    hover <- input$state.trends.hover
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    counties <- input$SRC.county
+    rate <- input$SRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    
+    trends.tooltip(hover, state_initial, y.value, counties)
+  })
+  
+  nation.trends.tooltip <- function(hover, 
+                                    y.value="p_cases", 
+                                    selected.states = c(), 
+                                    moving.avg.window=7) {
+    pixelratio <- session$clientData$pixelratio
+    left.offset <- 20
+    top.offset <- 175
+    
+    y_label <- get_y_label(y.value)
+    covid_TS_state.cases.plot <- covid_TS_state_long.cases %>%
+      select(-c(population)) %>%
+      filter(State %in% selected.states$abr) %>%
+      group_by(State) %>% 
+      filter(n() >= moving.avg.window) %>%
+      mutate(diff = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+      mutate(p_diff = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right"))) %>%
+      ungroup()
+    
+    US <- covid_TS_US_long.cases %>%
+      mutate(diff = c(numeric(moving.avg.window-1), zoo::rollmean(diff, moving.avg.window, align = "right"))) %>%
+      mutate(p_diff = c(numeric(moving.avg.window-1), zoo::rollmean(p_diff, moving.avg.window, align = "right")))
+    
+    US$State = "US"
+    
+    covid_TS_state.cases.plot <-  covid_TS_state.cases.plot %>%
+      group_by(State) %>%
+      ungroup() %>%
+      rbind.data.frame(US) %>%
+      filter(get(y.value) > 1)
+    
+    point <- nearPoints(covid_TS_state.cases.plot, hover, threshold = 5, maxpoints = 1, addDist = TRUE) %>%
+      rename(Values = all_of(y.value)) %>%
+      left_join(selected.states,
+                by = c("State" = "abr"))
+    
+    if (nrow(point) == 0) return(NULL)
+    point <- point[1,]
+    
+    state.or.national <- "State: "
+    if(is.na(point$name)) {
+      point$name <- ""
+      state.or.national <- "United States"
+    }
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - log(hover$y, 10)) / (hover$domain$top - hover$domain$bottom)
+    # Log10 is needed to account for log y axis
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    
+    style <- paste0("position:absolute; 
+                    z-index:100;",
+                    "left:", (left_px)/pixelratio + left.offset, "px; 
+                    top:", (top_px)/pixelratio + top.offset, "px;")
+    
+    wellPanel(
+      style = style,
+      class = "gg_tooltip",
+      p(HTML(paste0("<b>",state.or.national,"</b>", point$name, "<br/>",
+                    "<b> Date: </b>", point$date, "<br/>",
+                    "<b>", y_label, ": </b>",  format(round(point$Values),big.mark = ","), "<br/>"
+      ))))
+  }
+  
+  output$US.trends.tooltip <- renderUI({
+    hover <- input$US.trends.hover
+    selected.states <- data.frame(name = input$NRC.state)
+    selected.states <- selected.states %>%
+      left_join(state.abr[c("name", "abr")],
+                by = c("name" = "name"))
+    rate <- input$NRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    
+    nation.trends.tooltip(hover, y.value, selected.states)
+  })
+  
+  output$state.CoT <- renderPlot({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    ggbar.overall(state_initial, y.value = "p_cases", remove.title = T) + 
+      #geom_vline(xintercept=reactive.line$x, color= "black", linetype="solid", size = 1, show.legend = F) +
+      NULL
+  })
+  
+  output$state.CoT.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_CoT_plot.png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      ggsave(filename = file, 
+             plot = ggbar.overall(state_initial, y.value = "p_cases", remove.title = F, date = update_date) + NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  output$state.DoT.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_DoT_plot.png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      ggsave(filename = file, 
+             plot = ggbar.overall(state_initial, y.value = "p_deaths", remove.title = F, date = update_date) + NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  output$state.DoT <- renderPlot({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    ggbar.overall(state_initial, y.value = "p_deaths", remove.title = T)
+  })
+  
+  Tr.ranges <- reactiveValues(x = NULL, y = NULL)
+  
+  observeEvent(input$trends.dbl_click, {
+    brush <- input$trends.brush
+    if (!is.null(brush)) {
+      #browser()
+      Tr.ranges$x <- as.POSIXct(c(brush$xmin, brush$xmax), origin="1970-01-01")
+      Tr.ranges$y <- c(brush$ymin, brush$ymax)
+      
+    } else {
+      Tr.ranges$x <- NULL
+      Tr.ranges$y <- NULL
+    }
+  }) 
+  
+  output$state.trends <- renderPlot({
+    state_name <- input$state_name
+    state_initial <- state.abr[state.abr$name == state_name, "abr"]
+    counties <- input$SRC.county
+    rate <- input$SRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    
+    ggplot.state(state_initial, y.value = y.value, counties = counties,remove.title = T) +
+      coord_cartesian(xlim = Tr.ranges$x, ylim = Tr.ranges$y) +
+      NULL
+  })
+  
+  output$state.trends.dl <- downloadHandler(
+    filename = function() {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      return(paste0(state_initial, "_trends_plot.png"))
+    },
+    content = function(file) {
+      state_name <- input$state_name
+      state_initial <- state.abr[state.abr$name == state_name, "abr"]
+      counties <- input$SRC.county
+      rate <- input$SRC.rate
+      if (rate == "Overall") {
+        y.value = "diff"
+      }
+      else { #if per/100k
+        y.value = "p_diff"
+      }
+      ggsave(filename = file, 
+             plot = ggplot.state(state_initial, 
+                                 y.value = y.value, 
+                                 counties = counties,
+                                 remove.title = F, 
+                                 date = update_date) + 
+               coord_cartesian(xlim = Tr.ranges$x, ylim = Tr.ranges$y) +
+               NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  output$ranking.table <- render_gt({
+    entries <- input$entries
+    if ("Ascending" %in% input$rank.order) {
+      order <- function(x){x}
+    }
+    if ("Descending" %in% input$rank.order) {
+      order <- dplyr::desc
+    }
+    gt.ranking(as.numeric(entries), order)
+  })
+  
+  ### National Overview Code ###
+  
+  # TODO: Remove second version of ranking.table
+  output$US.ranking.table <- render_gt({
+    entries <- input$US.entries
+    if ("Ascending" %in% input$US.rank.order) {
+      order <- function(x){x}
+    }
+    if ("Descending" %in% input$US.rank.order) {
+      order <- dplyr::desc
+    }
+    gt.ranking(as.numeric(entries), order)
+  })
+  
+  output$US.trends.title <- renderUI({
+    rate <- input$NRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    tagList(
+      tags$h2("United States Daily Case Trends"),
+      tags$h3(paste0("How have ", get_y_label(y.value), " changed in US states? (7 day average)"))
+    )
+  })
+  
+  output$US.determinant.title <- renderUI({
+    det <- input$US.determinant
+    if (det == "CRD Mortality") {
+      det <- "Cronic Respiratory Disease (CRD) Mortality"
+    }
+    tagList(
+      tags$h2(paste0("United States ", det, " Disparities")),
+      tags$h3(paste0("What are the nationwide disparities in ", det, " Rates compared to the US Average?"))
+    )
+  })
+  
+  output$US.determinant.text <- renderText({
+    det <- input$US.determinant
+    paste0("Nationwide, ",det," has been observed as a leading comorbidity of COVID-19.")
+  })
+  
+  output$US.map.cases <- renderLeaflet({
+    geo.plot("US", "Daily Case")
+  })
+  
+  output$US.map.cases.dl <- downloadHandler(
+    filename = function() {
+      return("US_cases.png")
+    },
+    content = function(file) {
+      title <- tags$h1(style="text-align:center;", "US COVID-19 Case Hotspots")
+      mapshot(x = geo.plot("US", 
+                           "Daily Case", 
+                           title = tags$div(title)
+      ),
+      file = file,
+      cliprect = "viewport",
+      selfcontained = F)
+    }
+  )
+  
+  output$US.report <- render_gt({
+    US.stats.table()
+  })
+  
+  output$US.map.deaths <- renderLeaflet({
+    geo.plot("US", "Daily Mortality")
+  })
+  
+  output$US.map.deaths.dl <- downloadHandler(
+    filename = function() {
+      return("US_mortality.png")
+    },
+    content = function(file) {
+      title <- tags$h2(style="text-align:center;", "US COVID-19 Mortality Hotspots")
+      mapshot(x = geo.plot("US", 
+                           "Daily Mortality", 
+                           title = tags$div(title)
+      ),
+      file = file,
+      cliprect = "viewport",
+      selfcontained = F)
+    }
+  )
+  
+  US.barplot.tooltip <- function(hover,
+                                 y.value="cases", 
+                                 moving.avg.window=14) {
+    pixelratio <- session$clientData$pixelratio
+    left.offset <- 17
+    top.offset <- 82
+    
+    if(is.null(hover)) {return(NULL)}
+    my_diff <- get_dif(y.value)
+    category <- get_y_label(y.value)
+    
+    # calculate point position INSIDE the image as percent of total dimensions
+    # from left (horizontal) and from top (vertical)
+    left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+    top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+    
+    # calculate distance from left and bottom side of the picture in pixels
+    left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+    top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+    style <- paste0("position:absolute; 
+                    z-index:100;",
+                    "left:", (left_px)/pixelratio + left.offset, "px; 
+                    top:", (top_px)/pixelratio + top.offset, "px;")
+    
+    US.ma <- covid_TS_US_long.cases %>%
+      rename(Values = all_of(y.value)) %>%
+      rename(my_diff = all_of(my_diff)) %>%
+      mutate(diff.ma =  c(my_diff[1:7-1], zoo::rollmean(my_diff, 7, align="right"))) %>%
+      #mutate(pct_increase =diff.ma/Values*100) %>%
+      mutate(pct_increase = my_diff/Values*100) %>%
+      mutate(ma = c(numeric(moving.avg.window-1), zoo::rollmean(Values, moving.avg.window, align = "right"))) %>%
+      filter(ma > 0)
+    #US.ma[US.ma$diff.ma > 0 & US.ma$pct_increase > 5, "pct_increase"] <- 5
+    #US.ma[US.ma$my_diff > 0 & US.ma$pct_increase > 5, "pct_increase"] <- 5
+    US.ma[is.na(US.ma$pct_increase) | US.ma$pct_increase <= 0, "pct_increase"] <- 0
+    US.ma <- US.ma %>%
+      filter(date == as.Date(as.POSIXct(hover$x, origin="1970-01-01"), tz="EST"))
+    
+    five.plus <- ""
+    #if (length(US.ma$pct_increase) > 0) {
+    #  if(US.ma$pct_increase >= 5) {
+    #    five.plus <- "+"
+    #  }
+    #}
+    
+    wellPanel(
+      style = style,
+      class = "gg_tooltip",
+      p(HTML(paste0("<b> Date: </b>", as.Date(as.POSIXct(hover$x, origin="1970-01-01"), tz="EST"), "<br/>",
+                    "<b>", category, ": </b>", format(round(US.ma$Values,2), big.mark = ","), "<br/>",
+                    "<b> Change in ", category, ": </b>+",  format(round(US.ma$my_diff,2),big.mark = ","), "<br/>",
+                    "<b> Daily Percentage Increase: </b>",  format(round(US.ma$pct_increase,2),big.mark = ","), "%",five.plus,"<br/>"
+      ))))
+    
+  }
+  
+  output$US.CoT.tooltip <- renderUI({
+    hover <- input$US.CoT.hover
+    US.barplot.tooltip(hover, "cases")
+  })
+  
+  output$US.DoT.tooltip <- renderUI({
+    hover <- input$US.DoT.hover
+    US.barplot.tooltip(hover, "deaths")
+  })
+  
+  output$US.CoT <- renderPlot({
+    ggbar.US(y.value = "cases", remove.title = T)
+  })
+  
+  output$US.CoT.dl <- downloadHandler(
+    filename = function() {
+      return("US_CoT_plot.png")
+    },
+    content = function(file) {
+      ggsave(filename = file, 
+             plot = ggbar.US(y.value = "cases", remove.title = F, date = update_date) + NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  output$US.DoT <- renderPlot({
+    ggbar.US(y.value = "deaths", remove.title = T)
+  })
+  
+  output$US.DoT.dl <- downloadHandler(
+    filename = function() {
+      return("US_DoT_plot.png")
+    },
+    content = function(file) {
+      ggsave(filename = file, 
+             plot = ggbar.US(y.value = "deaths", remove.title = F, date = update_date) + NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  output$US.trends <- renderPlot({
+    selected.states <- data.frame(name = input$NRC.state)
+    selected.states <- selected.states %>%
+      left_join(state.abr[c("name", "abr")],
+                by = c("name" = "name"))
+    rate <- input$NRC.rate
+    if (rate == "Overall") {
+      y.value = "diff"
+    }
+    else { #if per/100k
+      y.value = "p_diff"
+    }
+    
+    ggplot.US(y.value=y.value, moving.avg.window=7, selected.states=selected.states$abr, remove.title=T) +
+      coord_cartesian(xlim = Tr.ranges$x, ylim = Tr.ranges$y) +
+      NULL
+  })
+  
+  output$US.trends.dl <- downloadHandler(
+    filename = function() {
+      return("US_trends_plot.png")
+    },
+    content = function(file) {
+      selected.states <- data.frame(name = input$NRC.state)
+      selected.states <- selected.states %>%
+        left_join(state.abr[c("name", "abr")],
+                  by = c("name" = "name"))
+      rate <- input$NRC.rate
+      if (rate == "Overall") {
+        y.value = "diff"
+      }
+      else { #if per/100k
+        y.value = "p_diff"
+      }
+      ggsave(filename = file, 
+             plot = ggplot.US(y.value=y.value, 
+                              moving.avg.window=7, 
+                              selected.states=selected.states$abr, 
+                              remove.title=F,
+                              date = update_date) +
+               coord_cartesian(xlim = Tr.ranges$x, ylim = Tr.ranges$y) +
+               NULL,
+             device = "png",
+             width = 8,
+             height = 6,
+             units = "in")
+    }
+  )
+  
+  # TODO: This is written twice
+  output$US.maps.determinant <- renderLeaflet({
+    det <- input$US.determinant
+    geo.plot("US", det)
+  })
+  
+  output$US.maps.determinant.dl <- downloadHandler(
+    filename = function() {
+      det <- input$US.determinant
+      return(paste0("US_", det, ".png"))
+    },
+    content = function(file) {
+      det <- input$US.determinant
+      det_title <- det
+      if (det == "CRD Mortality") {
+        det_title <- "Cronic Respiratory Disease (CRD) Mortality"
+      }
+      title <- tags$h1(paste0("US ", det_title, " Rate Disparities Compared to the US Average"))
+      mapshot(x = geo.plot("US", 
+                           det, 
+                           title = tags$div(title)
+      ),
+      file = file,
+      cliprect = "viewport",
+      selfcontained = F)
+    }
+  )
+  
+  
   ### The following code deals with setting or responding to parameterized URLs
   observe(print(input$tab))
   
@@ -2374,7 +3148,7 @@ server <- function(input, output, session) {
     updateQueryString(url.new)
   })
   
-  observe({ # this observer executes once, when the page loads
+  observe({ # this observer executes once, when the page loads " 
     
     data <- parseQueryString(session$clientData$url_search)
     
@@ -2387,10 +3161,12 @@ server <- function(input, output, session) {
     }
     
     # if the tab variable is defined, send a message to client to update the tab
-    if (any(sapply(data[c('outcome_usa_mortality', 
+    if (any(sapply(data[c("state_report_cards",
+                          "national_report_card",
+                          'outcome_usa_mortality', 
                           'outcome_usa_racial_disparity',
-                          'outcome_ny_mortality',
-                          'outcome_ny_cases', 
+                          'outcome_state_mortality',
+                          'outcome_state_cases', 
                           'outcome_ny_racial_disparity',
                           'outcome_ct_racial_disparity',
                           'outcome_ny_new_cases',
@@ -2400,8 +3176,9 @@ server <- function(input, output, session) {
                           'outcome_ny_cases_time_region',
                           'mediation_usa_testing',
                           'mediation_usa_hospital_beds',
-                          'determinant_usa_diabetes',
-                          'determinant_ny_diabetes'
+                          'determinant_usa',
+                          #'determinant_usa_obesity',
+                          'determinant_ny'
     )], 
     Negate(is.null)))) {
       # browser()

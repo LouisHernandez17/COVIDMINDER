@@ -5,14 +5,18 @@
 # - gghighlight
 # - ggrepel
 # - geojsonio
+# - gt
 # - htmltools
 # - leaflet
 # - leaflet.extras
+# - mapview
 # - shiny
 # - tidyverse
 # - zoo
 
-dependencies <- c("shiny", "dplyr", "gghighlight", "ggrepel", "geojsonio", "htmltools", "leaflet", "leaflet.extras", "tidyverse", "zoo")
+options(repos=structure(c(CRAN="http://cran.rstudio.com"))) # Needed for Rstudio server side
+
+dependencies <- c("shiny", "dplyr", "gghighlight", "ggrepel", "geojsonio", "gt", "htmltools", "leaflet", "leaflet.extras", "mapview","tidyverse", "zoo")
 
 # Check and install packages not yet available
 install.dependencies <- dependencies[!(dependencies %in% installed.packages()[, "Package"])]
@@ -25,9 +29,11 @@ library(dplyr)
 library(geojsonio)
 library(gghighlight)
 library(ggrepel)
+library(gt)
 library(htmltools)
 library(leaflet)
 library(leaflet.extras)
+library(mapview)
 library(shiny)
 library(tidyverse)
 library(lubridate)
