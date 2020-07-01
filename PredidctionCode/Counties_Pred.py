@@ -50,12 +50,21 @@ def Build_Training_Data(DataPlot, Regions_Daily_Cases, pathDiabetes, Regions, ex
         DataRegion = DataRegion.sum(level=0)
         counties = pd.unique(DataPlot[DataPlot['Region'] == region].index.get_level_values('County'))
         Food_InsecureReg = Diabetes.loc[counties]['no_Food_Insecure'].sum() / DataRegion['Population'].iloc[0]
-        Values = Values + list(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [np.nan]
+
         Dict_Food_Insec[region] = Food_InsecureReg
         Dict_Pop[region] = DataRegion['Population'].iloc[0]
-        if exog:
-            Pop = Pop + [DataRegion['Population'].iloc[0]] * len(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [0]
-            Food_Insecure = Food_Insecure + [Food_InsecureReg] * len(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [0]
+        if v!=0:
+            Values = Values + list(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [np.nan]
+            if exog:
+                Pop = Pop + [DataRegion['Population'].iloc[0]] * len(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [0]
+                Food_Insecure = Food_Insecure + [Food_InsecureReg] * len(Regions_Daily_Cases[region].iloc[:-v]) + 5 * [0]
+        else :
+            Values = Values + list(Regions_Daily_Cases[region]) + 5 * [np.nan]
+            if exog:
+                Pop = Pop + [DataRegion['Population'].iloc[0]] * len(Regions_Daily_Cases[region]) + 5 * [0]
+                Food_Insecure = Food_Insecure + [Food_InsecureReg] * len(Regions_Daily_Cases[region]) + 5 * [
+                    0]
+
     if exog:
         return (Values, Pop, Food_Insecure, Dict_Pop, Dict_Food_Insec)
     else:
@@ -69,7 +78,6 @@ def GridSearch(Regions, Regions_Daily_Cases, Values, Food_Insecure=None, Pop=Non
     formatter = mdates.DateFormatter('%a %d/%m')
     params = []
     scoresExog = []
-    plt.style.use('ggplot')
     List_Regions = pd.unique(Regions['Region'])
     for p in range(1, 5):
         for q in range(1, 5):
@@ -83,11 +91,12 @@ def GridSearch(Regions, Regions_Daily_Cases, Values, Food_Insecure=None, Pop=Non
                                         missing='drop', enforce_invertibility=False)
                     results = model.fit(disp=0)
                     scores_counties = []
-                    plt.figure()
-                    ax = plt.gca()
-                    plt.xticks(rotation=20)
-                    ax.xaxis.set_major_locator(mdates.DayLocator(interval=7))
-                    ax.xaxis.set_major_formatter(formatter)
+                    if plot :
+                        plt.figure()
+                        ax = plt.gca()
+                        plt.xticks(rotation=20)
+                        ax.xaxis.set_major_locator(mdates.DayLocator(interval=7))
+                        ax.xaxis.set_major_formatter(formatter)
                     for region in List_Regions:
                         DataCounty = Regions_Daily_Cases[region].dropna()
                         if exog:
@@ -137,7 +146,7 @@ def GridSearch(Regions, Regions_Daily_Cases, Values, Food_Insecure=None, Pop=Non
     return BestParams, scoresExog[argbest]
 
 
-def Prediction(Regions, Regions_Daily_Cases, Values, BestParams, Food_Insecure=None, Pop=None, exog=True, plot=False,
+def Prediction(Regions, Regions_Daily_Cases, Values, BestParams, Food_Insecure=None, Pop=None,Dict_Pop=None, Dict_Food_Insec=None, exog=True, plot=False,
                v=7):
     BestMod = SARIMAX(Values, exog=np.array([Pop, Food_Insecure]).transpose(), order=BestParams, missing='drop',
                       enforce_invertibility=False)
@@ -178,11 +187,13 @@ def Prediction(Regions, Regions_Daily_Cases, Values, BestParams, Food_Insecure=N
     Predictions.index.name = 'date'
     return (Predictions)
 
-
-DataPlot, Regions_Daily_Cases = Build_Data(pathdata, Regions)
-Values, Pop, Food_Insecure, Dict_Pop, Dict_Food_Insec = Build_Training_Data(DataPlot, Regions_Daily_Cases, pathDiabetes,
-                                                                            Regions, exog=True, v=7)
-Params, results = GridSearch(Regions, Regions_Daily_Cases, Values, Food_Insecure, Pop, Dict_Pop, Dict_Food_Insec, True,
-                             False, 7)
-Pred = Prediction(Regions, Regions_Daily_Cases, Values, Params, Food_Insecure, Pop, exog=True, plot=False)
-Pred.to_csv(path+'data/csv/time_series/covid_NY_Prediction.csv')
+if __name__ == "__main__":
+    DataPlot, Regions_Daily_Cases = Build_Data(pathdata, Regions)
+    Values, Pop, Food_Insecure, Dict_Pop, Dict_Food_Insec = Build_Training_Data(DataPlot, Regions_Daily_Cases, pathDiabetes,
+                                                                                Regions, exog=True, v=7)
+    Params, results = GridSearch(Regions, Regions_Daily_Cases, Values, Food_Insecure, Pop, Dict_Pop, Dict_Food_Insec, True,
+                                 False, 7)
+    Values, Pop, Food_Insecure, Dict_Pop, Dict_Food_Insec = Build_Training_Data(DataPlot, Regions_Daily_Cases, pathDiabetes,
+                                                                                Regions, exog=True, v=0)
+    Pred = Prediction(Regions, Regions_Daily_Cases, Values, Params, Food_Insecure, Pop, Dict_Pop, Dict_Food_Insec,exog=True, plot=False,v=7)
+    Pred.to_csv(path+'data/csv/time_series/covid_NY_Prediction.csv')
