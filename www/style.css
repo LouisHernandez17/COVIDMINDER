@@ -114,13 +114,11 @@ p {
   padding:-5px;
 }
 
-.leaflet-container {
-  height:100%;
-}
 
 .gg_tooltip {
-    background-color: #f7f7f7;
-    background-color: rgba(245, 245, 245, 0.85);
+    background: white;
+    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    border-radius: 5px;
     padding: 0 10px;
     margin: 10px 0;
     line-height: 1.5em;
@@ -183,6 +181,19 @@ p {
 
 .leaflet-container {
   background:none;
+  height:100%;
+}
+
+.legend-colorbar {
+  list-style-type:none;
+  display:flex;
+  clear:both;
+  padding:0;
+}
+
+.legend-colorsquares {
+  height:20px;
+  width:31px;
 }
 
 .dropdown-toggle > div:first-child {
